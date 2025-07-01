@@ -167,6 +167,7 @@ function renderCharacterTasks(idx) {
     } else if (task.type === 'select-count') {
       const val = char.tasks[task.id] || 0;
       let btns = '';
+      btns += `<button class="btn btn-sm me-1 ${val === 0 ? 'btn-success' : 'btn-outline-secondary'}" onclick="selectCount(${idx}, '${task.id}', 0)">0</button>`;
       for (let n = 1; n <= task.max; n++) {
         btns += `<button class="btn btn-sm me-1 ${val === n ? 'btn-success' : 'btn-outline-secondary'}" onclick="selectCount(${idx}, '${task.id}', ${n})">${n}</button>`;
       }
