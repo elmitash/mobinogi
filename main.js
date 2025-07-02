@@ -8,8 +8,8 @@ const FIELD_BOSSES = [
 ];
 const DAILY_TASKS = [
   { id: 'dailyfree', name: '매일 무료 상품', type: 'servercheck' },
-  { id: 'blackhole', name: '검은구멍', type: 'select-count', max: 3 },
-  { id: 'ominous', name: '불길한 결계', type: 'select-count', max: 2 },
+  { id: 'blackhole', name: '검은구멍(남은횟수)', type: 'select-count', max: 3 },
+  { id: 'ominous', name: '불길한 결계(남은횟수)', type: 'select-count', max: 2 },
   { id: 'fergus', name: '퍼거스 교환', type: 'check' },
   { id: 'neris', name: '네리스 교환', type: 'check' }
 ];
@@ -75,16 +75,20 @@ function autoResetTasks() {
     characters.forEach(char => {
       if (!char.tasks) return;
       // 기본 일일 퀘스트
-      DAILY_TASKS.forEach(task => { delete char.tasks[task.id]; });
+      DAILY_TASKS.forEach(task => {
+        if (task.type === 'select-count') {
+          char.tasks[task.id] = task.max;
+        } else {
+          delete char.tasks[task.id];
+        }
+      });
       // 사용자 추가 일일 퀘스트
       userDailyTasks.forEach((_, tIdx) => { delete char.tasks[`user-daily-${tIdx}`]; });
-      // 검은구멍도 포함
-      if (char.tasks['blackhole']) char.tasks['blackhole'] = 0;
     });
     lastReset.daily = today6.toISOString();
     saveData();
   }
-  // 주간 퀘스트 초기화
+  // 주간 초기화: 이번주 월요일 오전 6시
   if (!lastReset.weekly || new Date(lastReset.weekly) < monday6) {
     characters.forEach(char => {
       if (!char.tasks) return;
@@ -160,16 +164,16 @@ function renderCharacterTasks(idx) {
     if (removedDailyTaskIds.includes(task.id)) return;
     let li = document.createElement('li');
     li.className = 'list-group-item d-flex align-items-center justify-content-between';
-    let minusBtn = showDeleteButtons[idx] ? `<button class="btn btn-sm btn-outline-danger ms-2 py-0 px-2" style="font-size:1rem;line-height:1;vertical-align:middle;" onclick="removeDefaultDailyTask('${task.id}')">-</button>` : '';
+    let minusBtn = showDeleteButtons[idx] ? `<button class=\"btn btn-sm btn-outline-danger ms-2 py-0 px-2\" style=\"font-size:1rem;line-height:1;vertical-align:middle;\" onclick=\"removeDefaultDailyTask('${task.id}')\">-</button>` : '';
     if (task.type === 'check' || task.type === 'servercheck') {
-      li.innerHTML = `<span>${task.name} ${minusBtn}</span><div class="form-switch"><input type="checkbox" class="form-check-input form-check-lg" style="width:2.5em;height:2em;" id="task-${task.id}-${idx}" ${char.tasks[task.id] ? 'checked' : ''} onchange="toggleTask(${idx}, '${task.id}')"></div>`;
+      li.innerHTML = `<span>${task.name} ${minusBtn}</span><div class=\"form-switch\"><input type=\"checkbox\" class=\"form-check-input form-check-lg\" style=\"width:2.5em;height:2em;\" id=\"task-${task.id}-${idx}\" ${char.tasks[task.id] ? 'checked' : ''} onchange=\"toggleTask(${idx}, '${task.id}')\"></div>`;
       ul.appendChild(li);
     } else if (task.type === 'select-count') {
-      const val = char.tasks[task.id] || 0;
+      // 남은 횟수로 표시, 0~max까지 버튼, 초기값은 max
+      const val = typeof char.tasks[task.id] === 'number' ? char.tasks[task.id] : task.max;
       let btns = '';
-      btns += `<button class="btn btn-sm me-1 ${val === 0 ? 'btn-success' : 'btn-outline-secondary'}" onclick="selectCount(${idx}, '${task.id}', 0)">0</button>`;
-      for (let n = 1; n <= task.max; n++) {
-        btns += `<button class="btn btn-sm me-1 ${val === n ? 'btn-success' : 'btn-outline-secondary'}" onclick="selectCount(${idx}, '${task.id}', ${n})">${n}</button>`;
+      for (let n = task.max; n >= 0; n--) {
+        btns += `<button class=\"btn btn-sm me-1 ${val === n ? 'btn-success' : 'btn-outline-secondary'}\" onclick=\"selectCount(${idx}, '${task.id}', ${n})\">${n}</button>`;
       }
       li.innerHTML = `<span>${task.name} ${minusBtn}</span><span>${btns}</span>`;
       ul.appendChild(li);
@@ -184,7 +188,7 @@ function renderCharacterTasks(idx) {
       <span>
         ${task} ${minusBtn}
       </span>
-      <div class="form-switch"><input class="form-check-input form-check-lg" style="width:2.5em;height:2em;" id="user-daily-${tIdx}-${idx}" ${char.tasks[`user-daily-${tIdx}`] ? 'checked' : ''} onchange="toggleTask(${idx}, 'user-daily-${tIdx}')"></div>
+      <div class="form-switch"><input class="form-check-input form-check-lg" type="checkbox" style="width:2.5em;height:2em;" id="user-daily-${tIdx}-${idx}" ${char.tasks[`user-daily-${tIdx}`] ? 'checked' : ''} onchange="toggleTask(${idx}, 'user-daily-${tIdx}')"></div>
     `;
     ul.appendChild(li);
   });
@@ -236,7 +240,7 @@ function renderCharacterTasks(idx) {
       <span>
         ${task} ${minusBtn}
       </span>
-      <div class="form-switch"><input class="form-check-input form-check-lg" style="width:2.5em;height:2em;" id="user-weekly-${tIdx}-${idx}" ${char.tasks[`user-weekly-${tIdx}`] ? 'checked' : ''} onchange="toggleTask(${idx}, 'user-weekly-${tIdx}')"></div>
+      <div class="form-switch"><input class="form-check-input form-check-lg" type="checkbox" style="width:2.5em;height:2em;" id="user-weekly-${tIdx}-${idx}" ${char.tasks[`user-weekly-${tIdx}`] ? 'checked' : ''} onchange="toggleTask(${idx}, 'user-weekly-${tIdx}')"></div>
     `;
     ul.appendChild(li);
   });
@@ -265,7 +269,14 @@ window.addCharacter = function() {
   if (characters.length >= MAX_CHARACTERS) return;
   const name = prompt('추가할 캐릭터 이름을 입력하세요:');
   if (name) {
-    characters.push({ name, tasks: {} });
+    // select-count 타입은 남은 횟수로, 초기값을 max로 설정
+    let tasks = {};
+    DAILY_TASKS.forEach(task => {
+      if (task.type === 'select-count') {
+        tasks[task.id] = task.max;
+      }
+    });
+    characters.push({ name, tasks });
     saveData();
     renderCharacters();
   }
@@ -370,9 +381,8 @@ window.addUserDailyTask = function() {
 window.removeDefaultDailyTask = function(taskId) {
   if (!removedDailyTaskIds.includes(taskId)) removedDailyTaskIds.push(taskId);
   characters.forEach(char => {
-    if (char && char.tasks) {
-      delete char.tasks[taskId];
-    }
+    if (!char.tasks) return;
+    delete char.tasks[taskId];
   });
   saveData();
   renderCharacters();
@@ -381,9 +391,8 @@ window.removeDefaultDailyTask = function(taskId) {
 window.removeDefaultWeeklyTask = function(taskId) {
   if (!removedWeeklyTaskIds.includes(taskId)) removedWeeklyTaskIds.push(taskId);
   characters.forEach(char => {
-    if (char && char.tasks) {
-      delete char.tasks[taskId];
-    }
+    if (!char.tasks) return;
+    delete char.tasks[taskId];
   });
   saveData();
   renderCharacters();
@@ -391,75 +400,21 @@ window.removeDefaultWeeklyTask = function(taskId) {
 
 window.removeUserDailyTask = function(tIdx) {
   userDailyTasks.splice(tIdx, 1);
-  characters.forEach(char => {
-    if (!char.tasks) return;
-    delete char.tasks[`user-daily-${tIdx}`];
-  });
   saveData();
   renderCharacters();
 };
 
-window.addUserWeeklyTask = function() {
-  const name = prompt('추가할 주간 퀘스트 이름을 입력하세요:');
-  if (name && name.trim()) {
-    userWeeklyTasks.push(name.trim());
-    saveData();
-    renderCharacters();
-  }
-};
-
 window.removeUserWeeklyTask = function(tIdx) {
   userWeeklyTasks.splice(tIdx, 1);
-  characters.forEach(char => {
-    if (!char.tasks) return;
-    delete char.tasks[`user-weekly-${tIdx}`];
-  });
   saveData();
   renderCharacters();
 };
 
 window.toggleDeleteMode = function(idx) {
-  if (showDeleteButtons[idx]) {
-    showDeleteButtons[idx] = false;
-    const char = characters[idx];
-    // 삭제 모드 해제 시, 기본 퀘스트 복원
-    DAILY_TASKS.forEach(task => {
-      if (removedDailyTaskIds.includes(task.id)) {
-        char.tasks[task.id] = false;
-      }
-    });
-    WEEKLY_TASKS.forEach(task => {
-      if (removedWeeklyTaskIds.includes(task.id)) {
-        char.tasks[task.id] = false;
-      }
-    });
-    saveData();
-    renderCharacters();
-  } else {
-    // 삭제 모드 활성화
-    showDeleteButtons[idx] = true;
-    renderCharacters();
-  }
+  showDeleteButtons[idx] = !showDeleteButtons[idx];
+  renderCharacterTasks(idx);
 };
 
-window.resetAllData = function() {
-  if (!confirm('정말 모든 데이터를 초기화할까요? (캐릭터, 체크, 퀘스트 항목 등 모두 삭제됨)')) return;
-  localStorage.removeItem('mobinogi-todo');
-  location.reload();
-};
-
-window.resetQuestItems = function() {
-  if (!confirm('퀘스트 항목(삭제/추가된 항목 포함)만 초기화할까요? (캐릭터 체크 데이터는 유지됨)')) return;
-  removedDailyTaskIds = [];
-  removedWeeklyTaskIds = [];
-  userDailyTasks = [];
-  userWeeklyTasks = [];
-  saveData();
-  renderCharacters();
-  showMessage('퀘스트 항목이 초기화되었습니다.', 2000);
-};
-
-document.addEventListener('DOMContentLoaded', () => {
-  loadData();
-  renderCharacters();
-});
+// 페이지 로드 시 데이터 불러오기
+loadData();
+renderCharacters();
