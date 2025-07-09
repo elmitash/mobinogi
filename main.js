@@ -1,3 +1,6 @@
+// import { generateSyncId, getOrCreateSyncId, getShortCode, exportDataCode, importDataCode } from './sync.js';
+// 동기화 및 DB 관련 함수는 sync.js에서 window에 등록하여 사용
+
 // 캐릭터 및 해야할 일 정보
 const MAX_CHARACTERS = 5;
 const FIELD_BOSSES = [
@@ -20,6 +23,9 @@ const WEEKLY_TASKS = [
   { id: 'succubus', name: '서큐버스 레이드', type: 'check' }
 ];
 
+// API 서버 주소
+const API_BASE = 'https://mobinogi.elmi.page/api.php';
+
 let characters = [];
 let userDailyTasks = [];
 let userWeeklyTasks = [];
@@ -28,10 +34,14 @@ let removedDailyTaskIds = [];
 let removedWeeklyTaskIds = [];
 let showDeleteButtons = [];
 
-function loadData() {
-  const data = localStorage.getItem('mobinogi-todo');
-  if (data) {
-    const parsed = JSON.parse(data);
+// API로 데이터 불러오기
+async function loadData() {
+  const syncId = window.getOrCreateSyncId();
+  try {
+    const res = await fetch(`${API_BASE}?action=data&sync_id=${syncId}`);
+    if (!res.ok) throw new Error('데이터 없음');
+    const result = await res.json();
+    const parsed = result.data;
     if (Array.isArray(parsed)) {
       characters = parsed;
       userDailyTasks = [];
@@ -47,7 +57,8 @@ function loadData() {
       removedWeeklyTaskIds = parsed.removedWeeklyTaskIds || [];
       lastReset = parsed.lastReset || { daily: null, weekly: null };
     }
-  } else {
+  } catch (e) {
+    // 서버에 데이터가 없으면 초기화
     characters = [];
     userDailyTasks = [];
     userWeeklyTasks = [];
@@ -58,8 +69,20 @@ function loadData() {
   autoResetTasks();
 }
 
-function saveData() {
-  localStorage.setItem('mobinogi-todo', JSON.stringify({ characters, userDailyTasks, userWeeklyTasks, removedDailyTaskIds, removedWeeklyTaskIds, lastReset }));
+// API로 데이터 저장
+async function saveData() {
+  const syncId = window.getOrCreateSyncId();
+  const shortCode = window.getShortCode();
+  const data = { characters, userDailyTasks, userWeeklyTasks, removedDailyTaskIds, removedWeeklyTaskIds, lastReset };
+  try {
+    await fetch(`${API_BASE}?action=data`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sync_id: syncId, short_code: shortCode, data })
+    });
+  } catch (e) {
+    alert('서버 저장 실패! 네트워크를 확인하세요.');
+  }
 }
 
 function autoResetTasks() {
@@ -265,6 +288,16 @@ function showMessage(msg, timeout = 2000) {
   }
 }
 
+function renderSyncCode() {
+  const area = document.getElementById('sync-code-area');
+  if (!area) return;
+  const shortCode = window.getShortCode ? window.getShortCode() : '';
+  area.innerHTML = shortCode ? `<span style="font-size:1.3em;font-weight:bold;letter-spacing:0.18em;background:#fff3cd;padding:0.2em 0.7em;border-radius:0.5em;color:#b8860b;box-shadow:0 2px 8px #ffeeba;">동기화 코드: ${shortCode}</span>` : '';
+}
+
+// 페이지 로드 시 동기화 코드 표시
+window.addEventListener('DOMContentLoaded', renderSyncCode);
+
 window.addCharacter = function() {
   if (characters.length >= MAX_CHARACTERS) return;
   const name = prompt('추가할 캐릭터 이름을 입력하세요:');
@@ -416,5 +449,4 @@ window.toggleDeleteMode = function(idx) {
 };
 
 // 페이지 로드 시 데이터 불러오기
-loadData();
-renderCharacters();
+loadData().then(renderCharacters);
