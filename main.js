@@ -23,8 +23,13 @@ const WEEKLY_TASKS = [
   { id: 'succubus', name: '서큐버스 레이드', type: 'check' }
 ];
 
-// API 서버 주소
-const API_BASE = 'https://mobinogi.elmi.page/api.php';
+// API 서버 주소: 도메인에 따라 자동 선택
+let API_BASE;
+if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+  API_BASE = 'http://localhost:8000/api.php';
+} else {
+  API_BASE = 'https://mobinogi.elmi.page/api.php';
+}
 
 let characters = [];
 let userDailyTasks = [];
