@@ -71,6 +71,8 @@ function showMessage(msg, type = 'info', center = false, persist = false) {
   area.style.display = 'block';
   area.style.fontWeight = 'normal';
   area.style.textAlign = 'center';
+  // 공간 차지 방지: 메시지 없을 때 display:none, 메시지 있을 때만 block
+  area.style.minHeight = '';
   if (center) {
     area.style.margin = '0 auto';
     area.style.float = 'none';
@@ -99,7 +101,10 @@ function showMessage(msg, type = 'info', center = false, persist = false) {
     area.style.padding = '';
   }
   if (!persist) {
-    setTimeout(() => { area.style.display = 'none'; }, 5000);
+    setTimeout(() => {
+      area.style.display = 'none';
+      area.innerHTML = '';
+    }, 5000);
   }
 }
 
@@ -163,12 +168,17 @@ window.getShortCode = getShortCode;
 function renderSyncCode() {
   const area = document.getElementById('sync-code-area');
   const desc = document.getElementById('sync-desc-area');
+  const urlArea = document.getElementById('sync-url-area');
   const code = window.getShortCode ? window.getShortCode() : '';
+  const url = 'https://mobinogi.elmi.page/' + (code ? code : '');
   if (!area) return;
   if (code) {
     area.innerHTML = `<span style="font-size:1.3em;font-weight:bold;letter-spacing:0.18em;background:#fff3cd;padding:0.18em 0.7em;border-radius:0.5em;color:#b8860b;box-shadow:0 2px 8px #ffeeba;">동기화 코드: ${code}</span>`;
     area.style.display = '';
     if (desc) desc.style.display = '';
+    if (urlArea) {
+      urlArea.innerHTML = `<a href='${url}' target='_blank' rel='noopener' style='text-decoration:underline;color:#0d6efd;'>${url}</a>`;
+    }
     if (location.pathname !== '/' + code) {
       history.replaceState(null, '', '/' + code);
     }
@@ -176,6 +186,9 @@ function renderSyncCode() {
     area.innerHTML = '';
     area.style.display = 'none';
     if (desc) desc.style.display = 'none';
+    if (urlArea) {
+      urlArea.innerHTML = `<a href='https://mobinogi.elmi.page/' target='_blank' rel='noopener' style='text-decoration:underline;color:#0d6efd;'>https://mobinogi.elmi.page/</a>`;
+    }
     if (location.pathname !== '/') {
       history.replaceState(null, '', '/');
     }
@@ -184,18 +197,22 @@ function renderSyncCode() {
 window.renderSyncCode = renderSyncCode;
 
 document.addEventListener('DOMContentLoaded', function() {
-  // sync-id가 있을 때만 동기화 코드/설명 표시
+  // sync-id가 있을 때만 동기화 코드/설명/URL 표시
   if (window.getShortCode && window.getShortCode()) {
     renderSyncCode();
     const code = document.getElementById('sync-code-area');
     if (code) code.style.display = '';
     const desc = document.getElementById('sync-desc-area');
     if (desc) desc.style.display = '';
+    const urlArea = document.getElementById('sync-url-area');
+    if (urlArea) urlArea.textContent = 'https://mobinogi.elmi.page/' + window.getShortCode();
   } else {
     const code = document.getElementById('sync-code-area');
     const desc = document.getElementById('sync-desc-area');
     if (code) code.style.display = 'none';
     if (desc) desc.style.display = 'none';
+    const urlArea = document.getElementById('sync-url-area');
+    if (urlArea) urlArea.textContent = 'https://mobinogi.elmi.page/';
   }
 });
 
