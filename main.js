@@ -71,6 +71,13 @@ async function loadData() {
 
 // API로 데이터 저장
 async function saveData() {
+  // 캐릭터가 1명 이상이거나, 기존에 저장된 데이터가 있을 때만 저장
+  if (!characters || characters.length === 0) {
+    // 캐릭터가 0명이고, 기존에 서버에 저장된 데이터가 없으면 저장하지 않음
+    // (즉, 최초 접속 시에는 saveData를 호출하지 않음)
+    // 단, 캐릭터가 0명인데 기존에 서버에 데이터가 있으면 삭제는 deleteCharacter에서 처리함
+    return;
+  }
   const syncId = window.getOrCreateSyncId();
   const shortCode = window.getShortCode();
   const data = { characters, userDailyTasks, userWeeklyTasks, removedDailyTaskIds, removedWeeklyTaskIds, lastReset };
@@ -109,7 +116,7 @@ function autoResetTasks() {
       userDailyTasks.forEach((_, tIdx) => { delete char.tasks[`user-daily-${tIdx}`]; });
     });
     lastReset.daily = today6.toISOString();
-    saveData();
+    if (characters.length > 0) saveData();
   }
   // 주간 초기화: 이번주 월요일 오전 6시
   if (!lastReset.weekly || new Date(lastReset.weekly) < monday6) {
@@ -121,7 +128,7 @@ function autoResetTasks() {
       FIELD_BOSSES.forEach(boss => { delete char.tasks[boss.id]; });
     });
     lastReset.weekly = monday6.toISOString();
-    saveData();
+    if (characters.length > 0) saveData();
   }
 }
 
@@ -333,8 +340,34 @@ window.cancelDelete = function(idx) {
 
 window.deleteCharacter = function(idx) {
   characters.splice(idx, 1);
-  saveData();
-  renderCharacters();
+  if (characters.length === 0) {
+    // 캐릭터가 0명이 되면 서버 데이터도 삭제
+    const syncId = window.getOrCreateSyncId ? window.getOrCreateSyncId() : '';
+    if (syncId) {
+      fetch(`${API_BASE}?action=delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sync_id: syncId })
+      })
+        .then(res => res.json())
+        .then(() => {
+          localStorage.removeItem('mobinogi-sync-id');
+          userDailyTasks = [];
+          userWeeklyTasks = [];
+          removedDailyTaskIds = [];
+          removedWeeklyTaskIds = [];
+          lastReset = { daily: null, weekly: null };
+          renderCharacters();
+          showMessage('모든 데이터가 삭제되었습니다.');
+        })
+        .catch(() => {
+          showMessage('서버 데이터 삭제 실패! 네트워크를 확인하세요.');
+        });
+    }
+  } else {
+    saveData();
+    renderCharacters();
+  }
 };
 
 window.editName = function(idx) {
