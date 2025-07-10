@@ -41,7 +41,18 @@ let showDeleteButtons = [];
 
 // API로 데이터 불러오기
 async function loadData() {
-  const syncId = window.getOrCreateSyncId();
+  const syncId = localStorage.getItem('mobinogi-sync-id');
+  if (!syncId) {
+    // 동기화 코드가 없으면 서버 요청 없이 초기화만 수행
+    characters = [];
+    userDailyTasks = [];
+    userWeeklyTasks = [];
+    removedDailyTaskIds = [];
+    removedWeeklyTaskIds = [];
+    lastReset = { daily: null, weekly: null };
+    autoResetTasks();
+    return;
+  }
   try {
     const res = await fetch(`${API_BASE}?action=data&sync_id=${syncId}`);
     if (!res.ok) throw new Error('데이터 없음');
@@ -215,17 +226,26 @@ function renderCharacterTasks(idx) {
     }
   });
   // 사용자 추가 일일 퀘스트
+  // userDailyTasks 렌더링 (객체 지원)
   userDailyTasks.forEach((task, tIdx) => {
+    let name = typeof task === 'string' ? task : task.name;
+    let type = typeof task === 'string' ? 'check' : (task.type || 'check');
+    let max = typeof task === 'object' && task.type === 'select-count' ? (task.max || 1) : 1;
     let li = document.createElement('li');
     li.className = 'list-group-item d-flex align-items-center justify-content-between';
     let minusBtn = showDeleteButtons[idx] ? `<button class="btn btn-sm btn-outline-danger ms-2 py-0 px-2" style="font-size:1rem;line-height:1;vertical-align:middle;" onclick="removeUserDailyTask(${tIdx})">-</button>` : '';
-    li.innerHTML = `
-      <span>
-        ${task} ${minusBtn}
-      </span>
-      <div class="form-switch"><input class="form-check-input form-check-lg" type="checkbox" style="width:2.5em;height:2em;" id="user-daily-${tIdx}-${idx}" ${char.tasks[`user-daily-${tIdx}`] ? 'checked' : ''} onchange="toggleTask(${idx}, 'user-daily-${tIdx}')"></div>
-    `;
-    ul.appendChild(li);
+    if (type === 'check' || type === 'servercheck') {
+      li.innerHTML = `<span>${name} ${minusBtn}</span><div class="form-switch"><input class="form-check-input form-check-lg" type="checkbox" style="width:2.5em;height:2em;" id="user-daily-${tIdx}-${idx}" ${char.tasks[`user-daily-${tIdx}`] ? 'checked' : ''} onchange="toggleTask(${idx}, 'user-daily-${tIdx}')"></div>`;
+      ul.appendChild(li);
+    } else if (type === 'select-count') {
+      const val = typeof char.tasks[`user-daily-${tIdx}`] === 'number' ? char.tasks[`user-daily-${tIdx}`] : max;
+      let btns = '';
+      for (let n = max; n >= 0; n--) {
+        btns += `<button class=\"btn btn-sm me-1 ${val === n ? 'btn-success' : 'btn-outline-secondary'}\" onclick=\"selectCount(${idx}, 'user-daily-${tIdx}', ${n})\">${n}</button>`;
+      }
+      li.innerHTML = `<span>${name} ${minusBtn}</span><span>${btns}</span>`;
+      ul.appendChild(li);
+    }
   });
   // 주간 퀘스트 헤더 + 버튼 + 항목 삭제 버튼
   let weeklyHeader = document.createElement('li');
@@ -267,17 +287,26 @@ function renderCharacterTasks(idx) {
     }
   });
   // 사용자 추가 주간 퀘스트
+  // userWeeklyTasks 렌더링 (객체 지원)
   userWeeklyTasks.forEach((task, tIdx) => {
+    let name = typeof task === 'string' ? task : task.name;
+    let type = typeof task === 'string' ? 'check' : (task.type || 'check');
+    let max = typeof task === 'object' && task.type === 'select-count' ? (task.max || 1) : 1;
     let li = document.createElement('li');
     li.className = 'list-group-item d-flex align-items-center justify-content-between';
-    let minusBtn = showDeleteButtons[idx] ? `<button class="btn btn-sm btn-outline-danger ms-2 py-0 px-2" style="font-size:1rem;line-height:1;vertical-align:middle;" onclick="removeUserWeeklyTask(${tIdx})">-</button>` : '';
-    li.innerHTML = `
-      <span>
-        ${task} ${minusBtn}
-      </span>
-      <div class="form-switch"><input class="form-check-input form-check-lg" type="checkbox" style="width:2.5em;height:2em;" id="user-weekly-${tIdx}-${idx}" ${char.tasks[`user-weekly-${tIdx}`] ? 'checked' : ''} onchange="toggleTask(${idx}, 'user-weekly-${tIdx}')"></div>
-    `;
-    ul.appendChild(li);
+    let minusBtn = showDeleteButtons[idx] ? `<button class=\"btn btn-sm btn-outline-danger ms-2 py-0 px-2\" style=\"font-size:1rem;line-height:1;vertical-align:middle;\" onclick=\"removeUserWeeklyTask(${tIdx})\">-</button>` : '';
+    if (type === 'check' || type === 'servercheck') {
+      li.innerHTML = `<span>${name} ${minusBtn}</span><div class="form-switch"><input class="form-check-input form-check-lg" type="checkbox" style="width:2.5em;height:2em;" id="user-weekly-${tIdx}-${idx}" ${char.tasks[`user-weekly-${tIdx}`] ? 'checked' : ''} onchange="toggleTask(${idx}, 'user-weekly-${tIdx}')"></div>`;
+      ul.appendChild(li);
+    } else if (type === 'select-count') {
+      const val = typeof char.tasks[`user-weekly-${tIdx}`] === 'number' ? char.tasks[`user-weekly-${tIdx}`] : max;
+      let btns = '';
+      for (let n = max; n >= 0; n--) {
+        btns += `<button class=\"btn btn-sm me-1 ${val === n ? 'btn-success' : 'btn-outline-secondary'}\" onclick=\"selectCount(${idx}, 'user-weekly-${tIdx}', ${n})\">${n}</button>`;
+      }
+      li.innerHTML = `<span>${name} ${minusBtn}</span><span>${btns}</span>`;
+      ul.appendChild(li);
+    }
   });
 }
 
@@ -300,15 +329,8 @@ function showMessage(msg, timeout = 2000) {
   }
 }
 
-function renderSyncCode() {
-  const area = document.getElementById('sync-code-area');
-  if (!area) return;
-  const shortCode = window.getShortCode ? window.getShortCode() : '';
-  area.innerHTML = shortCode ? `<span style="font-size:1.3em;font-weight:bold;letter-spacing:0.18em;background:#fff3cd;padding:0.2em 0.7em;border-radius:0.5em;color:#b8860b;box-shadow:0 2px 8px #ffeeba;">동기화 코드: ${shortCode}</span>` : '';
-}
-
 // 페이지 로드 시 동기화 코드 표시
-window.addEventListener('DOMContentLoaded', renderSyncCode);
+document.addEventListener('DOMContentLoaded', window.renderSyncCode);
 
 window.addCharacter = function() {
   if (characters.length >= MAX_CHARACTERS) return;
@@ -324,6 +346,7 @@ window.addCharacter = function() {
     characters.push({ name, tasks });
     saveData();
     renderCharacters();
+    renderSyncCode(); // 캐릭터 추가 후 동기화 코드 즉시 표시
   }
 };
 
@@ -385,13 +408,29 @@ window.editName = function(idx) {
 };
 
 window.toggleTask = function(idx, taskId) {
-  if (taskId === 'dailyfree') {
+  // 계정공유(servercheck) 타입 처리
+  // user-daily, user-weekly, 기본 daily 모두 지원
+  let isServerCheck = false;
+  // 기본 일일 퀘스트
+  if (taskId === 'dailyfree') isServerCheck = true;
+  // 사용자 추가 일일/주간 퀘스트
+  if (taskId.startsWith('user-daily-')) {
+    const tIdx = parseInt(taskId.replace('user-daily-', ''), 10);
+    const task = userDailyTasks[tIdx];
+    if (task && (task.type === 'servercheck')) isServerCheck = true;
+  }
+  if (taskId.startsWith('user-weekly-')) {
+    const tIdx = parseInt(taskId.replace('user-weekly-', ''), 10);
+    const task = userWeeklyTasks[tIdx];
+    if (task && (task.type === 'servercheck')) isServerCheck = true;
+  }
+  if (isServerCheck) {
     // 첫 캐릭터의 상태를 기준으로 반전
-    const newVal = !characters[0]?.tasks['dailyfree'];
+    const newVal = !characters[0]?.tasks[taskId];
     characters.forEach(char => {
       if (!char) return;
       if (!char.tasks) char.tasks = {};
-      char.tasks['dailyfree'] = newVal;
+      char.tasks[taskId] = newVal;
     });
     saveData();
     renderCharacters();
@@ -440,22 +479,83 @@ window.selectCount = function(idx, taskId, count) {
   renderCharacterTasks(idx);
 };
 
-window.addUserDailyTask = function() {
-  const name = prompt('추가할 일일 퀘스트 이름을 입력하세요:');
-  if (name && name.trim()) {
-    userDailyTasks.push(name.trim());
-    saveData();
-    renderCharacters();
-  }
-};
+// 퀘스트 추가 팝업 관련
+let questPopupMode = null; // 'daily' or 'weekly'
 
-window.addUserWeeklyTask = function() {
-  const name = prompt('추가할 주간 퀘스트 이름을 입력하세요:');
-  if (name && name.trim()) {
-    userWeeklyTasks.push(name.trim());
-    saveData();
-    renderCharacters();
+function showQuestPopup(mode) {
+  questPopupMode = mode;
+  document.getElementById('quest-popup-bg').style.display = 'block';
+  document.getElementById('quest-popup').style.display = 'block';
+  document.getElementById('quest-popup-title').textContent = mode === 'daily' ? '일일 퀘스트 추가' : '주간 퀘스트 추가';
+  document.getElementById('quest-popup-name').value = '';
+  document.getElementById('quest-popup-type').value = 'check';
+  document.getElementById('quest-popup-count').value = 1;
+  document.getElementById('quest-popup-count-wrap').style.display = 'none';
+}
+
+function hideQuestPopup() {
+  document.getElementById('quest-popup-bg').style.display = 'none';
+  document.getElementById('quest-popup').style.display = 'none';
+  questPopupMode = null;
+}
+
+// 팝업 타입 변경 시 횟수 입력 표시
+function onQuestTypeChange() {
+  const type = document.getElementById('quest-popup-type').value;
+  document.getElementById('quest-popup-count-wrap').style.display = (type === 'select-count') ? 'block' : 'none';
+}
+
+document.getElementById('quest-popup-type').addEventListener('change', onQuestTypeChange);
+document.getElementById('quest-popup-cancel').addEventListener('click', hideQuestPopup);
+document.getElementById('quest-popup-bg').addEventListener('click', hideQuestPopup);
+
+document.getElementById('quest-popup-add').addEventListener('click', function() {
+  const name = document.getElementById('quest-popup-name').value.trim();
+  const type = document.getElementById('quest-popup-type').value;
+  let max = 1;
+  if (type === 'select-count') {
+    max = parseInt(document.getElementById('quest-popup-count').value, 10);
+    if (isNaN(max) || max < 1 || max > 20) {
+      showMessage('횟수는 1~20 사이여야 합니다.');
+      return;
+    }
   }
+  if (!name) {
+    showMessage('항목명을 입력하세요.');
+    return;
+  }
+  let tIdx;
+  if (questPopupMode === 'daily') {
+    userDailyTasks.push({ name, type, max });
+    tIdx = userDailyTasks.length - 1;
+    // servercheck 타입이면 모든 캐릭터의 tasks에서 해당 키를 삭제(체크 안된 상태로 추가)
+    if (type === 'servercheck') {
+      characters.forEach(char => {
+        if (!char.tasks) return;
+        delete char.tasks[`user-daily-${tIdx}`];
+      });
+    }
+  } else {
+    userWeeklyTasks.push({ name, type, max });
+    tIdx = userWeeklyTasks.length - 1;
+    if (type === 'servercheck') {
+      characters.forEach(char => {
+        if (!char.tasks) return;
+        delete char.tasks[`user-weekly-${tIdx}`];
+      });
+    }
+  }
+  saveData();
+  renderCharacters();
+  hideQuestPopup();
+});
+
+// 기존 prompt 방식 제거, 버튼에서 팝업 호출로 변경
+window.addUserDailyTask = function() {
+  showQuestPopup('daily');
+};
+window.addUserWeeklyTask = function() {
+  showQuestPopup('weekly');
 };
 
 window.removeDefaultDailyTask = function(taskId) {

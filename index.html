@@ -16,8 +16,8 @@
             <button class="btn btn-secondary me-2" onclick="resetQuestItems()">퀘스트 항목 초기화</button>
             <button class="btn btn-outline-success" onclick="importDataCode()">동기화 코드 입력</button>
         </div>
-        <div id="sync-code-area" class="mb-2 text-center"></div>
-        <div id="sync-desc-area" class="mb-2 text-center" style="font-size:0.95em;color:#888;">
+        <div id="sync-code-area" class="mb-2 text-center" style="display:none;"></div>
+        <div id="sync-desc-area" class="mb-2 text-center" style="display:none;font-size:0.95em;color:#888;">
           ※다른 기기(예: PC나 스마트폰)에서 동기화 코드를 입력하면 같은 데이터를 볼 수 있습니다.
         </div>
         <div id="message-area" class="mb-3 text-center" style="min-height:2em;color:#dc3545;font-weight:bold;"></div>
@@ -35,6 +35,30 @@
         VS Code GitHub Copilot을 이용해서 작성되었습니다.<br>
         피드백/문의사항은 <a href="https://blog.elmi.page/1568" target="_blank" rel="noopener">여기</a>로 해 주세요.
       </small>
+    </div>
+    <div id="quest-popup-bg" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:1050;background:rgba(0,0,0,0.05);"></div>
+    <div id="quest-popup" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1100;width:340px;max-width:95vw;background:#fff;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.18);padding:28px 24px 20px 24px;">
+      <h5 id="quest-popup-title" class="mb-3">퀘스트 항목 추가</h5>
+      <div class="mb-2">
+        <label class="form-label">항목명</label>
+        <input type="text" id="quest-popup-name" class="form-control" maxlength="32" autocomplete="off">
+      </div>
+      <div class="mb-2">
+        <label class="form-label">퀘스트 타입</label>
+        <select id="quest-popup-type" class="form-select">
+          <option value="check">완료체크-캐릭터</option>
+          <option value="servercheck">완료체크-서버</option>
+          <option value="select-count">남은횟수</option>
+        </select>
+      </div>
+      <div class="mb-2" id="quest-popup-count-wrap" style="display:none;">
+        <label class="form-label">횟수지정</label>
+        <input type="number" id="quest-popup-count" class="form-control" min="1" max="20" value="1">
+      </div>
+      <div class="d-flex justify-content-end gap-2 mt-3">
+        <button id="quest-popup-add" class="btn btn-primary">추가</button>
+        <button id="quest-popup-cancel" class="btn btn-secondary">취소</button>
+      </div>
     </div>
 </body>
 </html>
