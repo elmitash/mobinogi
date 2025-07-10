@@ -52,7 +52,7 @@ $path = $_GET['action'] ?? '';
 // 1. 숏코드로 uuid 조회
 if ($method === 'GET' && $path === 'shortcode') {
     $short = $_GET['short_code'] ?? '';
-    if (!$short || strlen($short) !== 6) json_response(['error'=>'invalid short_code'], 400);
+    if (!$short || strlen($short) !== 8) json_response(['error'=>'invalid short_code'], 400);
     $stmt = $pdo->prepare('SELECT sync_id FROM mobinogi_sync_code WHERE short_code = ?');
     $stmt->execute([$short]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -77,7 +77,7 @@ if ($method === 'POST' && $path === 'data') {
     $sync_id = $input['sync_id'] ?? '';
     $short_code = $input['short_code'] ?? '';
     $data = $input['data'] ?? null;
-    if (!$sync_id || strlen($sync_id) !== 64 || !$short_code || strlen($short_code) !== 6 || !$data) {
+    if (!$sync_id || strlen($sync_id) !== 64 || !$short_code || strlen($short_code) !== 8 || !$data) {
         json_response(['error'=>'invalid input'], 400);
     }
     $data_json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
