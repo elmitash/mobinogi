@@ -1,3 +1,37 @@
+// URL이 /8자리숏코드 형식이면 자동 동기화
+(function() {
+  const path = location.pathname.replace(/^\//, '');
+  const localSyncId = localStorage.getItem('mobinogi-sync-id');
+  const localShort = localSyncId ? localSyncId.slice(0, 8) : '';
+  if (/^[a-zA-Z0-9]{8}$/.test(path)) {
+    // 이미 localStorage에 sync_id가 있고, 앞 8자리가 현재 path와 같으면 아무 동작도 하지 않음
+    if (localShort === path) return;
+    // sync_id가 없으면 fetch 시도, 실패 시 메인(/)으로 강제 이동
+    if (!localSyncId) {
+      fetch('https://mobinogi.elmi.page/api.php?action=shortcode&short_code=' + path)
+        .then(res => res.ok ? res.json() : Promise.reject())
+        .then(result => {
+          localStorage.setItem('mobinogi-sync-id', result.sync_id);
+          location.reload();
+        })
+        .catch(() => {
+          location.replace('/'); // 동기화 코드가 없으면 메인으로 이동
+        });
+      return;
+    }
+    // sync_id가 있는데 앞 8자리가 다르면 기존대로 fetch
+    fetch('https://mobinogi.elmi.page/api.php?action=shortcode&short_code=' + path)
+      .then(res => res.ok ? res.json() : Promise.reject())
+      .then(result => {
+        localStorage.setItem('mobinogi-sync-id', result.sync_id);
+        location.reload();
+      })
+      .catch(() => {
+        location.replace('/'); // 동기화 코드가 없으면 메인으로 이동
+      });
+  }
+})();
+
 // 동기화 및 DB 관련 함수 분리
 
 // 64자리 영숫자 UUID 생성 함수
@@ -20,10 +54,10 @@ function getOrCreateSyncId() {
   return id;
 }
 
-// 숏코드(앞 6자리) 생성
+// 숏코드(앞 8자리) 생성 (없으면 빈 문자열 반환)
 function getShortCode() {
-  const uuid = getOrCreateSyncId();
-  return uuid.slice(0, 6);
+  const id = localStorage.getItem('mobinogi-sync-id');
+  return id ? id.slice(0, 8) : '';
 }
 
 // 메시지 영역에 메시지 표시 함수 (index.html에 message-area div 필요)
@@ -81,7 +115,7 @@ function showSyncInputBox() {
   area.innerHTML = `
     <div style="background:#fff;border-radius:1em;box-shadow:0 2px 16px rgba(0,0,0,0.10);padding:1.5em 1.2em;max-width:340px;width:100%;margin:0 auto;display:flex;flex-direction:column;align-items:center;">
       <label for='sync-input' style='font-weight:bold;font-size:1.1em;margin-bottom:0.7em;'>동기화 코드(숏코드) 입력</label>
-      <input id='sync-input' type='text' maxlength='6' class='form-control text-center mb-2' style='font-size:1.5em;max-width:180px;letter-spacing:0.2em;' placeholder='6자리 코드'>
+      <input id='sync-input' type='text' maxlength='8' class='form-control text-center mb-2' style='font-size:1.5em;max-width:180px;letter-spacing:0.2em;' placeholder='8자리 코드'>
       <button class='btn btn-success w-100' onclick='submitSyncInput()'>동기화</button>
     </div>
   `;
@@ -95,8 +129,8 @@ window.showSyncInputBox = showSyncInputBox;
 // 동기화 코드 입력 제출 함수
 function submitSyncInput() {
   const input = document.getElementById('sync-input').value.trim();
-  if (!input || input.length !== 6) {
-    showMessage('6자리 숏코드를 입력하세요.', 'error');
+  if (!input || input.length !== 8) {
+    showMessage('8자리 동기화 코드를 입력하세요.', 'error');
     return;
   }
   // 기존 importDataCode 로직 활용
@@ -111,7 +145,7 @@ function submitSyncInput() {
       setTimeout(() => location.reload(), 1200);
     })
     .catch(() => {
-      showMessage('해당 숏코드를 찾을 수 없습니다.', 'error');
+      showMessage('해당 동기화 코드를 찾을 수 없습니다.', 'error');
     });
 }
 window.submitSyncInput = submitSyncInput;
@@ -125,12 +159,53 @@ window.getOrCreateSyncId = getOrCreateSyncId;
 window.getShortCode = getShortCode;
 
 // 페이지 로드 시 동기화 코드 항상 표시
+// renderSyncCode, URL replaceState 등은 코드가 있을 때만 동작
 function renderSyncCode() {
   const area = document.getElementById('sync-code-area');
-  if (!area) return;
+  const desc = document.getElementById('sync-desc-area');
   const code = window.getShortCode ? window.getShortCode() : '';
-  area.innerHTML = `<span style="font-size:1.3em;font-weight:bold;letter-spacing:0.18em;background:#fff3cd;padding:0.18em 0.7em;border-radius:0.5em;color:#b8860b;box-shadow:0 2px 8px #ffeeba;">${code}</span>`;
+  if (!area) return;
+  if (code) {
+    area.innerHTML = `<span style="font-size:1.3em;font-weight:bold;letter-spacing:0.18em;background:#fff3cd;padding:0.18em 0.7em;border-radius:0.5em;color:#b8860b;box-shadow:0 2px 8px #ffeeba;">동기화 코드: ${code}</span>`;
+    area.style.display = '';
+    if (desc) desc.style.display = '';
+    if (location.pathname !== '/' + code) {
+      history.replaceState(null, '', '/' + code);
+    }
+  } else {
+    area.innerHTML = '';
+    area.style.display = 'none';
+    if (desc) desc.style.display = 'none';
+    if (location.pathname !== '/') {
+      history.replaceState(null, '', '/');
+    }
+  }
 }
 window.renderSyncCode = renderSyncCode;
 
-document.addEventListener('DOMContentLoaded', renderSyncCode);
+document.addEventListener('DOMContentLoaded', function() {
+  // sync-id가 있을 때만 동기화 코드/설명 표시
+  if (window.getShortCode && window.getShortCode()) {
+    renderSyncCode();
+    const code = document.getElementById('sync-code-area');
+    if (code) code.style.display = '';
+    const desc = document.getElementById('sync-desc-area');
+    if (desc) desc.style.display = '';
+  } else {
+    const code = document.getElementById('sync-code-area');
+    const desc = document.getElementById('sync-desc-area');
+    if (code) code.style.display = 'none';
+    if (desc) desc.style.display = 'none';
+  }
+});
+
+// 페이지 로드 시 동기화 코드가 있으면 URL에 항상 /숏코드 형태로 유지 (코드가 있을 때만)
+(function() {
+  // 최초 진입 시에는 sync-id가 localStorage에 없으면 아무 동작도 하지 않음
+  const code = localStorage.getItem('mobinogi-sync-id');
+  const short = code ? code.slice(0, 8) : '';
+  const path = location.pathname.replace(/^\//, '');
+  if (short && /^[a-zA-Z0-9]{8}$/.test(short) && path !== short) {
+    history.replaceState({}, '', '/' + short);
+  }
+})();
