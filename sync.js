@@ -123,7 +123,6 @@ window.importDataCode = showSyncInputBox;
 window.generateSyncId = generateSyncId;
 window.getOrCreateSyncId = getOrCreateSyncId;
 window.getShortCode = getShortCode;
-window.exportDataCode = exportDataCode;
 
 // 페이지 로드 시 동기화 코드 항상 표시
 function renderSyncCode() {
