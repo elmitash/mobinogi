@@ -33,7 +33,7 @@ if ($method === 'GET' && $path === 'shortcode') {
 // 2. uuid로 데이터 조회
 if ($method === 'GET' && $path === 'data') {
     $sync_id = $_GET['sync_id'] ?? '';
-    if (!$sync_id || strlen($sync_id) < 32) json_response(['error'=>'invalid sync_id'], 400);
+    if (!$sync_id || strlen($sync_id) !== 64) json_response(['error'=>'invalid sync_id'], 400);
     $stmt = $pdo->prepare('SELECT data_json FROM mobinogi_checklist WHERE sync_id = ?');
     $stmt->execute([$sync_id]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -47,7 +47,7 @@ if ($method === 'POST' && $path === 'data') {
     $sync_id = $input['sync_id'] ?? '';
     $short_code = $input['short_code'] ?? '';
     $data = $input['data'] ?? null;
-    if (!$sync_id || strlen($sync_id) < 32 || !$short_code || strlen($short_code) !== 6 || !$data) {
+    if (!$sync_id || strlen($sync_id) !== 64 || !$short_code || strlen($short_code) !== 6 || !$data) {
         json_response(['error'=>'invalid input'], 400);
     }
     $data_json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -58,6 +58,28 @@ if ($method === 'POST' && $path === 'data') {
     $pdo->prepare('INSERT INTO mobinogi_sync_code (short_code, sync_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE sync_id=VALUES(sync_id)')
         ->execute([$short_code, $sync_id]);
     json_response(['result'=>'ok']);
+}
+
+// 4. 데이터 삭제 (sync_id 기준)
+if ($method === 'POST' && $path === 'delete') {
+    $raw = file_get_contents('php://input');
+    $input = json_decode($raw, true);
+    $sync_id = $input['sync_id'] ?? '';
+    // 정확히 64자리만 허용
+    if (!$sync_id || strlen($sync_id) !== 64) {
+        json_response([
+            'error'=>'invalid sync_id'
+        ], 400);
+    }
+    // mobinogi_checklist에서 삭제 (ON DELETE CASCADE로 sync_code도 자동 삭제)
+    $stmt = $pdo->prepare('DELETE FROM mobinogi_checklist WHERE sync_id = ?');
+    $stmt->execute([$sync_id]);
+    if ($stmt->rowCount() === 0) {
+        json_response([
+            'error'=>'not found or already deleted'
+        ], 404);
+    }
+    json_response(['result'=>'deleted']);
 }
 
 json_response(['error'=>'invalid endpoint'], 404);

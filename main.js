@@ -411,6 +411,15 @@ window.addUserDailyTask = function() {
   }
 };
 
+window.addUserWeeklyTask = function() {
+  const name = prompt('추가할 주간 퀘스트 이름을 입력하세요:');
+  if (name && name.trim()) {
+    userWeeklyTasks.push(name.trim());
+    saveData();
+    renderCharacters();
+  }
+};
+
 window.removeDefaultDailyTask = function(taskId) {
   if (!removedDailyTaskIds.includes(taskId)) removedDailyTaskIds.push(taskId);
   characters.forEach(char => {
@@ -446,6 +455,45 @@ window.removeUserWeeklyTask = function(tIdx) {
 window.toggleDeleteMode = function(idx) {
   showDeleteButtons[idx] = !showDeleteButtons[idx];
   renderCharacterTasks(idx);
+};
+
+window.resetAllData = function() {
+  if (!confirm('정말 모든 데이터를 초기화할까요?\n(동기화 서버의 데이터도 삭제됩니다)')) return;
+  const syncId = window.getOrCreateSyncId ? window.getOrCreateSyncId() : '';
+  if (!syncId) return;
+  // 서버 데이터 삭제 요청 (POST, JSON body)
+  fetch(`${API_BASE}?action=delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sync_id: syncId })
+  })
+    .then(res => res.json())
+    .then(() => {
+      // 로컬스토리지 및 변수 초기화
+      localStorage.removeItem('mobinogi-sync-id');
+      characters = [];
+      userDailyTasks = [];
+      userWeeklyTasks = [];
+      removedDailyTaskIds = [];
+      removedWeeklyTaskIds = [];
+      lastReset = { daily: null, weekly: null };
+      showMessage('모든 데이터가 초기화되었습니다. 페이지를 새로고침합니다.', 'success');
+      setTimeout(() => location.reload(), 1200);
+    })
+    .catch(() => {
+      showMessage('초기화 실패! 네트워크를 확인하세요.', 'error');
+    });
+};
+
+window.resetQuestItems = function() {
+  if (!confirm('변경했던 퀘스트 항목만 초기화할까요? 캐릭터/진행상황은 유지됩니다.')) return;
+  removedDailyTaskIds = [];
+  removedWeeklyTaskIds = [];
+  userDailyTasks = [];
+  userWeeklyTasks = [];
+  saveData();
+  renderCharacters();
+  showMessage('퀘스트 항목이 초기화되었습니다.', 'success');
 };
 
 // 페이지 로드 시 데이터 불러오기
