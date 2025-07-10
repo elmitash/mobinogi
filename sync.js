@@ -69,15 +69,6 @@ function showMessage(msg, type = 'info', center = false, persist = false) {
   }
 }
 
-// 데이터 내보내기: 숏코드(또는 전체 uuid) 보여주기
-function exportDataCode() {
-  const shortCode = getShortCode();
-  showMessage(
-    `<div style="font-size:1.1em;">동기화 코드(숏코드):<br><span style="font-size:2.2em;font-weight:bold;letter-spacing:0.2em;background:#fff3cd;padding:0.2em 0.7em;border-radius:0.5em;color:#b8860b;box-shadow:0 2px 8px #ffeeba;">${shortCode}</span><br><small style='color:#555;'>스마트폰 등에서 동기화하려면 이 코드를 입력하세요.</small></div>`,
-    'info', true, true
-  );
-}
-
 // 동기화 코드 입력 필드 표시 함수
 function showSyncInputBox() {
   let area = document.getElementById('sync-input-area');
