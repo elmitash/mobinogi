@@ -226,3 +226,18 @@ document.addEventListener('DOMContentLoaded', function() {
     history.replaceState({}, '', '/' + short);
   }
 })();
+
+// 다크 모드 토글 함수 및 버튼 추가
+function toggleDarkMode() {
+  document.body.classList.toggle('dark-mode');
+  localStorage.setItem('mobinogi-dark-mode', document.body.classList.contains('dark-mode') ? '1' : '0');
+}
+
+// 페이지 로드 시 다크 모드 상태 복원
+if (localStorage.getItem('mobinogi-dark-mode') === '1') {
+  document.addEventListener('DOMContentLoaded', function() {
+    document.body.classList.add('dark-mode');
+  });
+}
+
+window.toggleDarkMode = toggleDarkMode;

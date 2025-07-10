@@ -159,14 +159,14 @@ function renderCharacters() {
     col.className = 'col-md-2 mb-3';
     col.innerHTML = `
       <div class="card h-100">
-        <div class="card-body text-center">
+        <div class="card-body text-center bg-light dark-bg">
           <div class="mb-2 d-flex align-items-center justify-content-center gap-2">
             <span class="fw-bold" id="char-name-${i}">${char.name}</span>
             <button class="btn btn-sm btn-outline-secondary" onclick="editName(${i})">수정</button>
           </div>
           <ul class="list-group list-group-flush" id="char-task-list-${i}"></ul>
         </div>
-        <div class="card-footer bg-white border-0 text-center" id="char-footer-${i}">
+        <div class="card-footer bg-white dark-bg border-0 text-center" id="char-footer-${i}">
           <button class="btn btn-sm btn-danger" onclick="showDeleteConfirm(${i})">캐릭터 삭제</button>
         </div>
       </div>
@@ -196,7 +196,7 @@ function renderCharacterTasks(idx) {
   ul.innerHTML = '';
   // 일일 퀘스트 헤더 + 버튼 + 항목 삭제 버튼
   let dailyHeader = document.createElement('li');
-  dailyHeader.className = 'list-group-item bg-light fw-bold d-flex align-items-center justify-content-between';
+  dailyHeader.className = 'list-group-item bg-light dark-bg fw-bold d-flex align-items-center justify-content-between';
   dailyHeader.innerHTML = `
     <span>일일 퀘스트</span>
     <span>
@@ -209,7 +209,7 @@ function renderCharacterTasks(idx) {
   DAILY_TASKS.forEach(task => {
     if (removedDailyTaskIds.includes(task.id)) return;
     let li = document.createElement('li');
-    li.className = 'list-group-item d-flex align-items-center justify-content-between';
+    li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg';
     let minusBtn = showDeleteButtons[idx] ? `<button class=\"btn btn-sm btn-outline-danger ms-2 py-0 px-2\" style=\"font-size:1rem;line-height:1;vertical-align:middle;\" onclick=\"removeDefaultDailyTask('${task.id}')\">-</button>` : '';
     if (task.type === 'check' || task.type === 'servercheck') {
       li.innerHTML = `<span>${task.name} ${minusBtn}</span><div class=\"form-switch\"><input type=\"checkbox\" class=\"form-check-input form-check-lg\" style=\"width:2.5em;height:2em;\" id=\"task-${task.id}-${idx}\" ${char.tasks[task.id] ? 'checked' : ''} onchange=\"toggleTask(${idx}, '${task.id}')\"></div>`;
@@ -232,7 +232,7 @@ function renderCharacterTasks(idx) {
     let type = typeof task === 'string' ? 'check' : (task.type || 'check');
     let max = typeof task === 'object' && task.type === 'select-count' ? (task.max || 1) : 1;
     let li = document.createElement('li');
-    li.className = 'list-group-item d-flex align-items-center justify-content-between';
+    li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg';
     let minusBtn = showDeleteButtons[idx] ? `<button class="btn btn-sm btn-outline-danger ms-2 py-0 px-2" style="font-size:1rem;line-height:1;vertical-align:middle;" onclick="removeUserDailyTask(${tIdx})">-</button>` : '';
     if (type === 'check' || type === 'servercheck') {
       li.innerHTML = `<span>${name} ${minusBtn}</span><div class="form-switch"><input class="form-check-input form-check-lg" type="checkbox" style="width:2.5em;height:2em;" id="user-daily-${tIdx}-${idx}" ${char.tasks[`user-daily-${tIdx}`] ? 'checked' : ''} onchange="toggleTask(${idx}, 'user-daily-${tIdx}')"></div>`;
@@ -249,7 +249,7 @@ function renderCharacterTasks(idx) {
   });
   // 주간 퀘스트 헤더 + 버튼 + 항목 삭제 버튼
   let weeklyHeader = document.createElement('li');
-  weeklyHeader.className = 'list-group-item bg-light fw-bold d-flex align-items-center justify-content-between';
+  weeklyHeader.className = 'list-group-item bg-light dark-bg fw-bold d-flex align-items-center justify-content-between';
   weeklyHeader.innerHTML = `
     <span>주간 퀘스트</span>
     <span>
@@ -262,7 +262,7 @@ function renderCharacterTasks(idx) {
   WEEKLY_TASKS.forEach(task => {
     if (removedWeeklyTaskIds.includes(task.id)) return;
     let li = document.createElement('li');
-    li.className = 'list-group-item d-flex align-items-center justify-content-between';
+    li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg';
     let minusBtn = showDeleteButtons[idx] ? `<button class="btn btn-sm btn-outline-danger ms-2 py-0 px-2" style="font-size:1rem;line-height:1;vertical-align:middle;" onclick="removeDefaultWeeklyTask('${task.id}')">-</button>` : '';
     if (task.type === 'check') {
       li.innerHTML = `<span>${task.name} ${minusBtn}</span><div class="form-switch"><input type="checkbox" class="form-check-input form-check-lg" style="width:2.5em;height:2em;" id="task-${task.id}-${idx}" ${char.tasks[task.id] ? 'checked' : ''} onchange="toggleTask(${idx}, '${task.id}')"></div>`;
@@ -293,7 +293,7 @@ function renderCharacterTasks(idx) {
     let type = typeof task === 'string' ? 'check' : (task.type || 'check');
     let max = typeof task === 'object' && task.type === 'select-count' ? (task.max || 1) : 1;
     let li = document.createElement('li');
-    li.className = 'list-group-item d-flex align-items-center justify-content-between';
+    li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg';
     let minusBtn = showDeleteButtons[idx] ? `<button class=\"btn btn-sm btn-outline-danger ms-2 py-0 px-2\" style=\"font-size:1rem;line-height:1;vertical-align:middle;\" onclick=\"removeUserWeeklyTask(${tIdx})\">-</button>` : '';
     if (type === 'check' || type === 'servercheck') {
       li.innerHTML = `<span>${name} ${minusBtn}</span><div class="form-switch"><input class="form-check-input form-check-lg" type="checkbox" style="width:2.5em;height:2em;" id="user-weekly-${tIdx}-${idx}" ${char.tasks[`user-weekly-${tIdx}`] ? 'checked' : ''} onchange="toggleTask(${idx}, 'user-weekly-${tIdx}')"></div>`;

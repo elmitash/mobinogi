@@ -1,0 +1,70 @@
+body.dark-mode {
+  background: #181a1b !important;
+  color: #e0e0e0 !important;
+}
+.dark-mode .container, .dark-mode .container-fluid {
+  background: #23272b !important;
+  color: #e0e0e0 !important;
+}
+.dark-mode .card, .dark-mode .modal-content, .dark-mode .character-card, .dark-mode #quest-popup {
+  background: #23272b !important;
+  color: #e0e0e0 !important;
+  border-color: #444 !important;
+}
+.dark-mode #quest-popup {
+  box-shadow: 0 4px 24px rgba(0,0,0,0.35) !important;
+}
+.dark-mode .form-control, .dark-mode .form-select {
+  background: #23272b !important;
+  color: #e0e0e0 !important;
+  border-color: #444 !important;
+}
+.dark-mode .btn-primary, .dark-mode .btn-success, .dark-mode .btn-secondary, .dark-mode .btn-danger, .dark-mode .btn-outline-success {
+  color: #fff !important;
+}
+.dark-mode .alert {
+  background: #23272b !important;
+  color: #ffb347 !important;
+  border-color: #444 !important;
+}
+.dark-mode #sync-code-area span {
+  background: #2d2d2d !important;
+  color: #ffe066 !important;
+  box-shadow: 0 2px 8px #333 !important;
+}
+.dark-mode #sync-desc-area {
+  color: #bdbdbd !important;
+}
+.dark-mode a {
+  color: #7ecbff !important;
+}
+.dark-mode .quest-item, .dark-mode .quest-item * {
+  background: #23272b !important;
+  color: #e0e0e0 !important;
+}
+.dark-mode .character-card .btn-close, .dark-mode .character-card .btn-close:focus {
+  background: #444 !important;
+  filter: invert(1) grayscale(1) brightness(1.5);
+  border-radius: 50%;
+  opacity: 0.85;
+}
+.dark-mode .card-body, .dark-mode .card-footer, .dark-mode [id^="char-footer-"], .dark-mode [id^="char-task-list-"] {
+  background: #23272b !important;
+  color: #e0e0e0 !important;
+  border-top: 1px solid #444 !important;
+}
+.dark-mode .dark-bg {
+  background: #23272b !important;
+  color: #e0e0e0 !important;
+  border-color: #444 !important;
+}
+.dark-mode .btn-dark {
+  background: #23272b !important;
+  color: #e0e0e0 !important;
+  border: 1px solid #888 !important;
+}
+.dark-mode .btn-dark:focus, .dark-mode .btn-dark:hover {
+  background: #343a40 !important;
+  color: #fff !important;
+  border: 1px solid #bbb !important;
+}
