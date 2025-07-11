@@ -3,24 +3,18 @@
 
 // 캐릭터 및 해야할 일 정보
 const MAX_CHARACTERS = 5;
-const FIELD_BOSSES = [
-  { id: 'pery', name: '페리' },
-  { id: 'crab', name: '크라브바흐' },
-  { id: 'krama', name: '크라마' },
-  { id: 'drohe', name: '드로흐에넴' }
-];
 const DAILY_TASKS = [
-  { id: 'dailyfree', name: '매일 무료 상품', type: 'servercheck' },
-  { id: 'blackhole', name: '검은구멍(남은횟수)', type: 'select-count', max: 3 },
-  { id: 'ominous', name: '불길한 결계(남은횟수)', type: 'select-count', max: 2 },
-  { id: 'fergus', name: '퍼거스 교환', type: 'check' },
-  { id: 'neris', name: '네리스 교환', type: 'check' }
+  { name: '매일 무료 상품', type: 'servercheck' },
+  { name: '검은구멍(남은횟수)', type: 'select-count', max: 3 },
+  { name: '불길한 결계(남은횟수)', type: 'select-count', max: 2 },
+  { name: '퍼거스 교환', type: 'check' },
+  { name: '네리스 교환', type: 'check' }
 ];
 const WEEKLY_TASKS = [
-  { id: 'fieldboss', name: '주간 필드보스', type: 'fieldboss-group' },
-  { id: 'abyss', name: '어비스 던전', type: 'check' },
-  { id: 'glas', name: '글라스기브넨 레이드', type: 'check' },
-  { id: 'succubus', name: '서큐버스 레이드', type: 'check' }
+  { name: '필드보스3종', type: 'check' },
+  { name: '어비스 던전3종', type: 'check' },
+  { name: '글라스기브넨 레이드', type: 'check' },
+  { name: '서큐버스 레이드', type: 'check' }
 ];
 
 // API 서버 주소: 도메인에 따라 자동 선택
@@ -35,8 +29,6 @@ let characters = [];
 let userDailyTasks = [];
 let userWeeklyTasks = [];
 let lastReset = { daily: null, weekly: null };
-let removedDailyTaskIds = [];
-let removedWeeklyTaskIds = [];
 let showDeleteButtons = [];
 
 // 현재 세션에서 사용할 동기화 코드(숏코드) 변수
@@ -50,8 +42,6 @@ async function loadData() {
     characters = [];
     userDailyTasks = [];
     userWeeklyTasks = [];
-    removedDailyTaskIds = [];
-    removedWeeklyTaskIds = [];
     lastReset = { daily: null, weekly: null };
     autoResetTasks();
     return;
@@ -65,15 +55,11 @@ async function loadData() {
       characters = parsed;
       userDailyTasks = [];
       userWeeklyTasks = [];
-      removedDailyTaskIds = [];
-      removedWeeklyTaskIds = [];
       lastReset = { daily: null, weekly: null };
     } else {
       characters = parsed.characters || [];
       userDailyTasks = parsed.userDailyTasks || [];
       userWeeklyTasks = parsed.userWeeklyTasks || [];
-      removedDailyTaskIds = parsed.removedDailyTaskIds || [];
-      removedWeeklyTaskIds = parsed.removedWeeklyTaskIds || [];
       lastReset = parsed.lastReset || { daily: null, weekly: null };
     }
   } catch (e) {
@@ -81,8 +67,6 @@ async function loadData() {
     characters = [];
     userDailyTasks = [];
     userWeeklyTasks = [];
-    removedDailyTaskIds = [];
-    removedWeeklyTaskIds = [];
     lastReset = { daily: null, weekly: null };
   }
   autoResetTasks();
@@ -100,7 +84,7 @@ async function saveData() {
   }
   const syncId = CURRENT_SYNC_CODE;
   const shortCode = CURRENT_SYNC_CODE;
-  const data = { characters, userDailyTasks, userWeeklyTasks, removedDailyTaskIds, removedWeeklyTaskIds, lastReset };
+  const data = { characters, userDailyTasks, userWeeklyTasks, lastReset };
   try {
     await fetch(`${API_BASE}?action=data`, {
       method: 'POST',
@@ -129,15 +113,7 @@ function autoResetTasks() {
   if (!lastReset.daily || new Date(lastReset.daily) < today6) {
     characters.forEach(char => {
       if (!char.tasks) return;
-      // 기본 일일 퀘스트
-      DAILY_TASKS.forEach(task => {
-        if (task.type === 'select-count') {
-          char.tasks[task.id] = task.max;
-        } else {
-          delete char.tasks[task.id];
-        }
-      });
-      // 사용자 추가 일일 퀘스트
+      // 일일 퀘스트
       userDailyTasks.forEach((_, tIdx) => { delete char.tasks[`user-daily-${tIdx}`]; });
     });
     lastReset.daily = toKSTISOString(today6);
@@ -148,16 +124,14 @@ function autoResetTasks() {
     characters.forEach(char => {
       if (!char.tasks) return;
       // 주간 퀘스트
-      WEEKLY_TASKS.forEach(task => { delete char.tasks[task.id]; });
-      // 필드보스 체크
-      FIELD_BOSSES.forEach(boss => { delete char.tasks[boss.id]; });
+      userWeeklyTasks.forEach((_, tIdx) => { delete char.tasks[`user-weekly-${tIdx}`]; });
     });
     lastReset.weekly = toKSTISOString(monday6);
     if (characters.length > 0) saveData();
   }
 }
 
-// 기본 퀘스트도 샘플 퀘스트로 취급하여 삭제 가능하게 변경. 삭제 버튼 항상 표시, 삭제 함수에서 isDefault 체크 제거.
+// 기본 퀘스트도 샘플 퀘스트로 취급하여 삭제 가능하게 변경. 삭제 버튼 항상 표시
 // 최초 로드 시 기본 퀘스트를 배열에 추가
 function ensureDefaultTasks() {
   // 일일 퀘스트
@@ -327,13 +301,17 @@ if (!document.getElementById('highlight-boss-style')) {
   document.head.appendChild(style);
 }
 
-function showMessage(msg, timeout = 2000) {
+function showMessage(msg, timeout = 3000) {
   const el = document.getElementById('message-area');
   if (!el) return;
   el.textContent = msg;
+  el.style.display = 'block';
   if (timeout > 0) {
     setTimeout(() => {
-      if (el.textContent === msg) el.textContent = '';
+      if (el.textContent === msg) {
+        el.textContent = '';
+        el.style.display = 'none';
+      }
     }, timeout);
   }
 }
@@ -398,8 +376,6 @@ window.deleteCharacter = function(idx) {
           localStorage.removeItem('mobinogi-sync-id');
           userDailyTasks = [];
           userWeeklyTasks = [];
-          removedDailyTaskIds = [];
-          removedWeeklyTaskIds = [];
           lastReset = { daily: null, weekly: null };
           renderCharacters();
           showMessage('모든 데이터가 삭제되었습니다.');
@@ -507,6 +483,8 @@ function showQuestPopup(mode) {
   document.getElementById('quest-popup-type').value = 'check';
   document.getElementById('quest-popup-count').value = 1;
   document.getElementById('quest-popup-count-wrap').style.display = 'none';
+  // 퀘스트 이름 입력 칸에 자동 포커스
+  document.getElementById('quest-popup-name').focus();
 }
 
 function hideQuestPopup() {
@@ -519,6 +497,11 @@ function hideQuestPopup() {
 function onQuestTypeChange() {
   const type = document.getElementById('quest-popup-type').value;
   document.getElementById('quest-popup-count-wrap').style.display = (type === 'select-count') ? 'block' : 'none';
+  if (type === 'select-count') {
+    const countInput = document.getElementById('quest-popup-count');
+    countInput.focus();
+    countInput.select(); // 기존 값 선택 상태로 만들어 숫자 입력 시 바로 덮어씀
+  }
 }
 
 document.getElementById('quest-popup-type').addEventListener('change', onQuestTypeChange);
@@ -530,9 +513,12 @@ document.getElementById('quest-popup-add').addEventListener('click', function() 
   const type = document.getElementById('quest-popup-type').value;
   let max = 1;
   if (type === 'select-count') {
-    max = parseInt(document.getElementById('quest-popup-count').value, 10);
-    if (isNaN(max) || max < 1 || max > 20) {
-      showMessage('횟수는 1~20 사이여야 합니다.');
+    const countInput = document.getElementById('quest-popup-count');
+    max = parseInt(countInput.value, 10);
+    if (isNaN(max) || max < 1 || max > 5) {
+      showMessage('횟수는 1~5 사이여야 합니다.');
+      countInput.focus();
+      countInput.select();
       return;
     }
   }
@@ -613,8 +599,6 @@ window.resetAllData = function() {
       characters = [];
       userDailyTasks = [];
       userWeeklyTasks = [];
-      removedDailyTaskIds = [];
-      removedWeeklyTaskIds = [];
       lastReset = { daily: null, weekly: null };
       showMessage('모든 데이터가 초기화되었습니다. 메인으로 이동합니다.', 'success');
       setTimeout(() => { location.href = '/'; }, 1200);
@@ -626,8 +610,6 @@ window.resetAllData = function() {
 
 window.resetQuestItems = function() {
   if (!confirm('변경했던 퀘스트 항목만 초기화할까요? 캐릭터/진행상황은 유지됩니다.')) return;
-  removedDailyTaskIds = [];
-  removedWeeklyTaskIds = [];
   // 샘플(기본) 퀘스트로 초기화
   userDailyTasks = DAILY_TASKS.map(task => ({ ...task }));
   userWeeklyTasks = WEEKLY_TASKS.map(task => ({ ...task }));
