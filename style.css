@@ -62,3 +62,21 @@ body.dark-mode .memo-popup-title {
   color: #222;
   box-sizing: border-box;
 }
+
+/* 드래그 가능한 퀘스트 항목 기본 테두리: 은은한 실선 */
+.user-daily-item, .user-weekly-item {
+  border: 1.5px solid #b6e2c6 !important;
+  cursor: move !important;
+  box-shadow: 0 2px 8px rgba(25,135,84,0.06);
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+/* 드래그 중에만 점선 강조 */
+.user-daily-item.ui-sortable-helper, .user-weekly-item.ui-sortable-helper {
+  border: 2.5px dashed #198754 !important;
+  box-shadow: 0 4px 16px rgba(25,135,84,0.18);
+  background: #f6fff8;
+}
+.user-daily-list .user-daily-item, .user-weekly-list .user-weekly-item {
+  border-radius: 8px;
+  margin-bottom: 6px;
+}

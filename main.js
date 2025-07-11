@@ -86,6 +86,7 @@ async function loadData() {
     lastReset = { daily: null, weekly: null };
   }
   autoResetTasks();
+  ensureDefaultTasks();
 }
 
 // API로 데이터 저장
@@ -156,6 +157,24 @@ function autoResetTasks() {
   }
 }
 
+// 기본 퀘스트도 샘플 퀘스트로 취급하여 삭제 가능하게 변경. 삭제 버튼 항상 표시, 삭제 함수에서 isDefault 체크 제거.
+// 최초 로드 시 기본 퀘스트를 배열에 추가
+function ensureDefaultTasks() {
+  // 일일 퀘스트
+  if (userDailyTasks.length === 0) {
+    DAILY_TASKS.forEach(task => {
+      userDailyTasks.push({ ...task });
+    });
+  }
+  // 주간 퀘스트
+  if (userWeeklyTasks.length === 0) {
+    WEEKLY_TASKS.forEach(task => {
+      userWeeklyTasks.push({ ...task });
+    });
+  }
+}
+
+// 캐릭터 박스 렌더링
 function renderCharacters() {
   const row = document.getElementById('character-row');
   row.innerHTML = '';
@@ -203,49 +222,25 @@ function renderCharacterTasks(idx) {
   const ul = document.getElementById(`char-task-list-${idx}`);
   if (!ul) return;
   ul.innerHTML = '';
-  // 일일 퀘스트 헤더 + 버튼 + 항목 삭제 버튼
+  // 일일/주간 퀘스트를 하나의 리스트로 렌더링
   let dailyHeader = document.createElement('li');
   dailyHeader.className = 'list-group-item bg-light dark-bg fw-bold d-flex align-items-center justify-content-between';
-  dailyHeader.innerHTML = `
-    <span>일일 퀘스트</span>
-    <span>
-      <button class="btn btn-sm btn-outline-primary ms-2" onclick="addUserDailyTask()" style="width: 30px;">+</button>
-      <button class="btn btn-sm btn-outline-danger ms-2" onclick="toggleDeleteMode(${idx})" style="width: 30px;">-</button>
-    </span>
-  `;
+  dailyHeader.innerHTML = `<span>일일 퀘스트</span><span><button class=\"btn btn-sm btn-outline-primary ms-2\" onclick=\"addUserDailyTask()\" style=\"width: 30px;\">+</button><button class=\"btn btn-sm btn-outline-danger ms-2\" onclick=\"toggleDeleteMode(${idx}, 'daily')\" style=\"width: 30px;\">-</button></span>`;
   ul.appendChild(dailyHeader);
-  // 기본 일일 퀘스트(삭제된 id 제외)
-  DAILY_TASKS.forEach(task => {
-    if (removedDailyTaskIds.includes(task.id)) return;
-    let li = document.createElement('li');
-    li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg';
-    let minusBtn = showDeleteButtons[idx] ? `<button class=\"btn btn-sm btn-outline-danger ms-2 py-0 px-2\" style=\"font-size:1rem;line-height:1;vertical-align:middle;\" onclick=\"removeDefaultDailyTask('${task.id}')\">-</button>` : '';
-    if (task.type === 'check' || task.type === 'servercheck') {
-      li.innerHTML = `<span>${task.name} ${minusBtn}</span><div class=\"form-switch\"><input type=\"checkbox\" class=\"form-check-input form-check-lg\" style=\"width:2.5em;height:2em;\" id=\"task-${task.id}-${idx}\" ${char.tasks[task.id] ? 'checked' : ''} onchange=\"toggleTask(${idx}, '${task.id}')\"></div>`;
-      ul.appendChild(li);
-    } else if (task.type === 'select-count') {
-      // 남은 횟수로 표시, 0~max까지 버튼, 초기값은 max
-      const val = typeof char.tasks[task.id] === 'number' ? char.tasks[task.id] : task.max;
-      let btns = '';
-      for (let n = task.max; n >= 0; n--) {
-        btns += `<button class=\"btn btn-sm me-1 ${val === n ? 'btn-success' : 'btn-outline-secondary'}\" onclick=\"selectCount(${idx}, '${task.id}', ${n})\">${n}</button>`;
-      }
-      li.innerHTML = `<span>${task.name} ${minusBtn}</span><span>${btns}</span>`;
-      ul.appendChild(li);
-    }
-  });
-  // 사용자 추가 일일 퀘스트
-  // userDailyTasks 렌더링 (객체 지원)
+  let userDailyUl = document.createElement('ul');
+  userDailyUl.id = `user-daily-list-${idx}`;
+  userDailyUl.className = 'user-daily-list list-unstyled';
   userDailyTasks.forEach((task, tIdx) => {
-    let name = typeof task === 'string' ? task : task.name;
-    let type = typeof task === 'string' ? 'check' : (task.type || 'check');
-    let max = typeof task === 'object' && task.type === 'select-count' ? (task.max || 1) : 1;
+    let name = task.name;
+    let type = task.type || 'check';
+    let max = type === 'select-count' ? (task.max || 1) : 1;
     let li = document.createElement('li');
-    li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg';
-    let minusBtn = showDeleteButtons[idx] ? `<button class="btn btn-sm btn-outline-danger ms-2 py-0 px-2" style="font-size:1rem;line-height:1;vertical-align:middle;" onclick="removeUserDailyTask(${tIdx})">-</button>` : '';
+    li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg user-daily-item';
+    li.setAttribute('data-idx', tIdx);
+    let minusBtn = showDeleteButtons[idx]?.daily ? `<button class=\"btn btn-sm btn-outline-danger ms-2 py-0 px-2\" style=\"font-size:1rem;line-height:1;vertical-align:middle;\" onclick=\"removeUserDailyTask(${tIdx})\">-</button>` : '';
     if (type === 'check' || type === 'servercheck') {
-      li.innerHTML = `<span>${name} ${minusBtn}</span><div class="form-switch"><input class="form-check-input form-check-lg" type="checkbox" style="width:2.5em;height:2em;" id="user-daily-${tIdx}-${idx}" ${char.tasks[`user-daily-${tIdx}`] ? 'checked' : ''} onchange="toggleTask(${idx}, 'user-daily-${tIdx}')"></div>`;
-      ul.appendChild(li);
+      li.innerHTML = `<span>${name} ${minusBtn}</span><div class=\"form-switch\"><input class=\"form-check-input form-check-lg\" type=\"checkbox\" style=\"width:2.5em;height:2em;\" id=\"user-daily-${tIdx}-${idx}\" ${char.tasks[`user-daily-${tIdx}`] ? 'checked' : ''} onchange=\"toggleTask(${idx}, 'user-daily-${tIdx}')\"></div>`;
+      userDailyUl.appendChild(li);
     } else if (type === 'select-count') {
       const val = typeof char.tasks[`user-daily-${tIdx}`] === 'number' ? char.tasks[`user-daily-${tIdx}`] : max;
       let btns = '';
@@ -253,60 +248,29 @@ function renderCharacterTasks(idx) {
         btns += `<button class=\"btn btn-sm me-1 ${val === n ? 'btn-success' : 'btn-outline-secondary'}\" onclick=\"selectCount(${idx}, 'user-daily-${tIdx}', ${n})\">${n}</button>`;
       }
       li.innerHTML = `<span>${name} ${minusBtn}</span><span>${btns}</span>`;
-      ul.appendChild(li);
+      userDailyUl.appendChild(li);
     }
   });
-  // 주간 퀘스트 헤더 + 버튼 + 항목 삭제 버튼
+  ul.appendChild(userDailyUl);
+  // 주간 퀘스트
   let weeklyHeader = document.createElement('li');
   weeklyHeader.className = 'list-group-item bg-light dark-bg fw-bold d-flex align-items-center justify-content-between';
-  weeklyHeader.innerHTML = `
-    <span>주간 퀘스트</span>
-    <span>
-      <button class="btn btn-sm btn-outline-primary ms-2" onclick="addUserWeeklyTask()" style="width: 30px;">+</button>
-      <button class="btn btn-sm btn-outline-danger ms-2" onclick="toggleDeleteMode(${idx})" style="width: 30px;">-</button>
-    </span>
-  `;
+  weeklyHeader.innerHTML = `<span>주간 퀘스트</span><span><button class=\"btn btn-sm btn-outline-primary ms-2\" onclick=\"addUserWeeklyTask()\" style=\"width: 30px;\">+</button><button class=\"btn btn-sm btn-outline-danger ms-2\" onclick=\"toggleDeleteMode(${idx}, 'weekly')\" style=\"width: 30px;\">-</button></span>`;
   ul.appendChild(weeklyHeader);
-  // 기본 주간 퀘스트(삭제된 id 제외)
-  WEEKLY_TASKS.forEach(task => {
-    if (removedWeeklyTaskIds.includes(task.id)) return;
-    let li = document.createElement('li');
-    li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg';
-    let minusBtn = showDeleteButtons[idx] ? `<button class="btn btn-sm btn-outline-danger ms-2 py-0 px-2" style="font-size:1rem;line-height:1;vertical-align:middle;" onclick="removeDefaultWeeklyTask('${task.id}')">-</button>` : '';
-    if (task.type === 'check') {
-      li.innerHTML = `<span>${task.name} ${minusBtn}</span><div class="form-switch"><input type="checkbox" class="form-check-input form-check-lg" style="width:2.5em;height:2em;" id="task-${task.id}-${idx}" ${char.tasks[task.id] ? 'checked' : ''} onchange="toggleTask(${idx}, '${task.id}')"></div>`;
-      ul.appendChild(li);
-    } else if (task.type === 'fieldboss-group') {
-      let checkedCount = FIELD_BOSSES.reduce((sum, boss) => sum + (char.tasks[boss.id] ? 1 : 0), 0);
-      let bossList = FIELD_BOSSES.map(boss => {
-        return `<div class="form-check form-switch d-flex align-items-center justify-content-between ms-3 mb-1">
-          <span>${boss.name}</span>
-          <input class="form-check-input form-check-lg" style="width:2.5em;height:2em;" type="checkbox" id="boss-${boss.id}-${idx}" ${char.tasks[boss.id] ? 'checked' : ''} onchange="toggleFieldBoss(${idx}, '${boss.id}')">
-        </div>`;
-      }).join('');
-      const highlight = checkedCount === 3 ? 'highlight-boss' : '';
-      li.innerHTML = `<div class="w-100">
-        <div class="d-flex align-items-center justify-content-between mb-1">
-          <span>주간 필드보스 (최대 3마리) ${minusBtn}</span>
-          <small class="text-muted ${highlight}">선택: ${checkedCount}/3</small>
-        </div>
-        ${bossList}
-      </div>`;
-      ul.appendChild(li);
-    }
-  });
-  // 사용자 추가 주간 퀘스트
-  // userWeeklyTasks 렌더링 (객체 지원)
+  let userWeeklyUl = document.createElement('ul');
+  userWeeklyUl.id = `user-weekly-list-${idx}`;
+  userWeeklyUl.className = 'user-weekly-list list-unstyled';
   userWeeklyTasks.forEach((task, tIdx) => {
-    let name = typeof task === 'string' ? task : task.name;
-    let type = typeof task === 'string' ? 'check' : (task.type || 'check');
-    let max = typeof task === 'object' && task.type === 'select-count' ? (task.max || 1) : 1;
+    let name = task.name;
+    let type = task.type || 'check';
+    let max = type === 'select-count' ? (task.max || 1) : 1;
     let li = document.createElement('li');
-    li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg';
-    let minusBtn = showDeleteButtons[idx] ? `<button class=\"btn btn-sm btn-outline-danger ms-2 py-0 px-2\" style=\"font-size:1rem;line-height:1;vertical-align:middle;\" onclick=\"removeUserWeeklyTask(${tIdx})\">-</button>` : '';
+    li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg user-weekly-item';
+    li.setAttribute('data-idx', tIdx);
+    let minusBtn = showDeleteButtons[idx]?.weekly ? `<button class=\"btn btn-sm btn-outline-danger ms-2 py-0 px-2\" style=\"font-size:1rem;line-height:1;vertical-align:middle;\" onclick=\"removeUserWeeklyTask(${tIdx})\">-</button>` : '';
     if (type === 'check' || type === 'servercheck') {
-      li.innerHTML = `<span>${name} ${minusBtn}</span><div class="form-switch"><input class="form-check-input form-check-lg" type="checkbox" style="width:2.5em;height:2em;" id="user-weekly-${tIdx}-${idx}" ${char.tasks[`user-weekly-${tIdx}`] ? 'checked' : ''} onchange="toggleTask(${idx}, 'user-weekly-${tIdx}')"></div>`;
-      ul.appendChild(li);
+      li.innerHTML = `<span>${name} ${minusBtn}</span><div class=\"form-switch\"><input class=\"form-check-input form-check-lg\" type="checkbox" style="width:2.5em;height:2em;" id="user-weekly-${tIdx}-${idx}" ${char.tasks[`user-weekly-${tIdx}`] ? 'checked' : ''} onchange="toggleTask(${idx}, 'user-weekly-${tIdx}')"></div>`;
+      userWeeklyUl.appendChild(li);
     } else if (type === 'select-count') {
       const val = typeof char.tasks[`user-weekly-${tIdx}`] === 'number' ? char.tasks[`user-weekly-${tIdx}`] : max;
       let btns = '';
@@ -314,9 +278,45 @@ function renderCharacterTasks(idx) {
         btns += `<button class=\"btn btn-sm me-1 ${val === n ? 'btn-success' : 'btn-outline-secondary'}\" onclick=\"selectCount(${idx}, 'user-weekly-${tIdx}', ${n})\">${n}</button>`;
       }
       li.innerHTML = `<span>${name} ${minusBtn}</span><span>${btns}</span>`;
-      ul.appendChild(li);
+      userWeeklyUl.appendChild(li);
     }
   });
+  ul.appendChild(userWeeklyUl);
+  // jQuery UI sortable 적용 (렌더 후)
+  setTimeout(function() {
+    if (window.jQuery && window.jQuery.fn.sortable) {
+      window.jQuery(`#user-daily-list-${idx}`).sortable({
+        axis: 'y',
+        items: '.user-daily-item',
+        update: function(event, ui) {
+          const $items = window.jQuery(this).children('.user-daily-item');
+          const newOrder = [];
+          $items.each(function() {
+            const tIdx = parseInt(window.jQuery(this).attr('data-idx'), 10);
+            newOrder.push(userDailyTasks[tIdx]);
+          });
+          userDailyTasks = newOrder;
+          saveData();
+          renderCharacters();
+        }
+      });
+      window.jQuery(`#user-weekly-list-${idx}`).sortable({
+        axis: 'y',
+        items: '.user-weekly-item',
+        update: function(event, ui) {
+          const $items = window.jQuery(this).children('.user-weekly-item');
+          const newOrder = [];
+          $items.each(function() {
+            const tIdx = parseInt(window.jQuery(this).attr('data-idx'), 10);
+            newOrder.push(userWeeklyTasks[tIdx]);
+          });
+          userWeeklyTasks = newOrder;
+          saveData();
+          renderCharacters();
+        }
+      });
+    }
+  }, 0);
 }
 
 // 스타일 추가
@@ -574,40 +574,26 @@ window.addUserWeeklyTask = function() {
   showQuestPopup('weekly');
 };
 
-window.removeDefaultDailyTask = function(taskId) {
-  if (!removedDailyTaskIds.includes(taskId)) removedDailyTaskIds.push(taskId);
-  characters.forEach(char => {
-    if (!char.tasks) return;
-    delete char.tasks[taskId];
-  });
-  saveData();
-  renderCharacters();
-};
-
-window.removeDefaultWeeklyTask = function(taskId) {
-  if (!removedWeeklyTaskIds.includes(taskId)) removedWeeklyTaskIds.push(taskId);
-  characters.forEach(char => {
-    if (!char.tasks) return;
-    delete char.tasks[taskId];
-  });
-  saveData();
-  renderCharacters();
-};
-
+// 삭제 함수에서 모든 퀘스트 삭제 가능
 window.removeUserDailyTask = function(tIdx) {
   userDailyTasks.splice(tIdx, 1);
   saveData();
   renderCharacters();
 };
-
 window.removeUserWeeklyTask = function(tIdx) {
   userWeeklyTasks.splice(tIdx, 1);
   saveData();
   renderCharacters();
 };
 
-window.toggleDeleteMode = function(idx) {
-  showDeleteButtons[idx] = !showDeleteButtons[idx];
+// 삭제 버튼 토글 함수 (일일/주간 구분)
+window.toggleDeleteMode = function(idx, mode) {
+  if (!showDeleteButtons[idx]) showDeleteButtons[idx] = {};
+  if (mode === 'daily') {
+    showDeleteButtons[idx].daily = !showDeleteButtons[idx].daily;
+  } else if (mode === 'weekly') {
+    showDeleteButtons[idx].weekly = !showDeleteButtons[idx].weekly;
+  }
   renderCharacterTasks(idx);
 };
 
@@ -642,8 +628,9 @@ window.resetQuestItems = function() {
   if (!confirm('변경했던 퀘스트 항목만 초기화할까요? 캐릭터/진행상황은 유지됩니다.')) return;
   removedDailyTaskIds = [];
   removedWeeklyTaskIds = [];
-  userDailyTasks = [];
-  userWeeklyTasks = [];
+  // 샘플(기본) 퀘스트로 초기화
+  userDailyTasks = DAILY_TASKS.map(task => ({ ...task }));
+  userWeeklyTasks = WEEKLY_TASKS.map(task => ({ ...task }));
   saveData();
   renderCharacters();
   showMessage('퀘스트 항목이 초기화되었습니다.', 'success');
