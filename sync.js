@@ -3,12 +3,19 @@
   const path = location.pathname.replace(/^\//, '');
   const localSyncId = localStorage.getItem('mobinogi-sync-id');
   const localShort = localSyncId ? localSyncId.slice(0, 8) : '';
+  // API 주소 자동 선택
+  let API_BASE;
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+    API_BASE = 'http://localhost/api.php';
+  } else {
+    API_BASE = 'https://mobinogi.elmi.page/api.php';
+  }
   if (/^[a-zA-Z0-9]{8}$/.test(path)) {
     // 이미 localStorage에 sync_id가 있고, 앞 8자리가 현재 path와 같으면 아무 동작도 하지 않음
     if (localShort === path) return;
     // sync_id가 없으면 fetch 시도, 실패 시 메인(/)으로 강제 이동
     if (!localSyncId) {
-      fetch('https://mobinogi.elmi.page/api.php?action=shortcode&short_code=' + path)
+      fetch(`${API_BASE}?action=shortcode&short_code=${path}`)
         .then(res => res.ok ? res.json() : Promise.reject())
         .then(result => {
           localStorage.setItem('mobinogi-sync-id', result.sync_id);
@@ -20,7 +27,7 @@
       return;
     }
     // sync_id가 있는데 앞 8자리가 다르면 기존대로 fetch
-    fetch('https://mobinogi.elmi.page/api.php?action=shortcode&short_code=' + path)
+    fetch(`${API_BASE}?action=shortcode&short_code=${path}`)
       .then(res => res.ok ? res.json() : Promise.reject())
       .then(result => {
         localStorage.setItem('mobinogi-sync-id', result.sync_id);

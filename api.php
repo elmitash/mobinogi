@@ -3,8 +3,8 @@
 // 1. 허용할 출처(Origin) 목록 정의
 //    Live Server가 사용하는 두 주소를 모두 넣어줍니다.
 $allowed_origins = [
-    'http://127.0.0.1:5500',
-    'http://localhost:5500',
+    'http://127.0.0.1',
+    'http://localhost',
     'https://mobinogi.elmi.page'
 ];
 

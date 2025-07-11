@@ -26,7 +26,7 @@ const WEEKLY_TASKS = [
 // API 서버 주소: 도메인에 따라 자동 선택
 let API_BASE;
 if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-  API_BASE = 'http://localhost:8000/api.php';
+  API_BASE = 'http://localhost/api.php';
 } else {
   API_BASE = 'https://mobinogi.elmi.page/api.php';
 }
