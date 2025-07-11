@@ -39,9 +39,12 @@ let removedDailyTaskIds = [];
 let removedWeeklyTaskIds = [];
 let showDeleteButtons = [];
 
+// 현재 세션에서 사용할 동기화 코드(숏코드) 변수
+let CURRENT_SYNC_CODE = window.getShortCode ? window.getShortCode() : '';
+
 // API로 데이터 불러오기
 async function loadData() {
-  const syncId = localStorage.getItem('mobinogi-sync-id');
+  const syncId = CURRENT_SYNC_CODE;
   if (!syncId) {
     // 동기화 코드가 없으면 서버 요청 없이 초기화만 수행
     characters = [];
@@ -94,8 +97,8 @@ async function saveData() {
     // 단, 캐릭터가 0명인데 기존에 서버에 데이터가 있으면 삭제는 deleteCharacter에서 처리함
     return;
   }
-  const syncId = window.getOrCreateSyncId();
-  const shortCode = window.getShortCode();
+  const syncId = CURRENT_SYNC_CODE;
+  const shortCode = CURRENT_SYNC_CODE;
   const data = { characters, userDailyTasks, userWeeklyTasks, removedDailyTaskIds, removedWeeklyTaskIds, lastReset };
   try {
     await fetch(`${API_BASE}?action=data`, {
@@ -336,6 +339,10 @@ window.addCharacter = function() {
   if (characters.length >= MAX_CHARACTERS) return;
   const name = prompt('추가할 캐릭터 이름을 입력하세요:');
   if (name) {
+    // sync_id가 없으면 생성
+    if (!CURRENT_SYNC_CODE && window.getOrCreateSyncId) {
+      CURRENT_SYNC_CODE = window.getOrCreateSyncId();
+    }
     // select-count 타입은 남은 횟수로, 초기값을 max로 설정
     let tasks = {};
     DAILY_TASKS.forEach(task => {
@@ -347,6 +354,9 @@ window.addCharacter = function() {
     saveData();
     renderCharacters();
     renderSyncCode(); // 캐릭터 추가 후 동기화 코드 즉시 표시
+    if (CURRENT_SYNC_CODE) {
+      location.href = `/?code=${CURRENT_SYNC_CODE}`;
+    }
   }
 };
 
@@ -370,7 +380,7 @@ window.deleteCharacter = function(idx) {
   characters.splice(idx, 1);
   if (characters.length === 0) {
     // 캐릭터가 0명이 되면 서버 데이터도 삭제
-    const syncId = window.getOrCreateSyncId ? window.getOrCreateSyncId() : '';
+    const syncId = CURRENT_SYNC_CODE;
     if (syncId) {
       fetch(`${API_BASE}?action=delete`, {
         method: 'POST',
@@ -597,7 +607,7 @@ window.toggleDeleteMode = function(idx) {
 
 window.resetAllData = function() {
   if (!confirm('정말 모든 데이터를 초기화할까요?\n(동기화 서버의 데이터도 삭제됩니다)')) return;
-  const syncId = window.getOrCreateSyncId ? window.getOrCreateSyncId() : '';
+  const syncId = CURRENT_SYNC_CODE;
   if (!syncId) return;
   // 서버 데이터 삭제 요청 (POST, JSON body)
   fetch(`${API_BASE}?action=delete`, {
@@ -607,7 +617,6 @@ window.resetAllData = function() {
   })
     .then(res => res.json())
     .then(() => {
-      // 로컬스토리지 및 변수 초기화
       localStorage.removeItem('mobinogi-sync-id');
       characters = [];
       userDailyTasks = [];
@@ -615,8 +624,8 @@ window.resetAllData = function() {
       removedDailyTaskIds = [];
       removedWeeklyTaskIds = [];
       lastReset = { daily: null, weekly: null };
-      showMessage('모든 데이터가 초기화되었습니다. 페이지를 새로고침합니다.', 'success');
-      setTimeout(() => location.reload(), 1200);
+      showMessage('모든 데이터가 초기화되었습니다. 메인으로 이동합니다.', 'success');
+      setTimeout(() => { location.href = '/'; }, 1200);
     })
     .catch(() => {
       showMessage('초기화 실패! 네트워크를 확인하세요.', 'error');

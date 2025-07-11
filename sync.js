@@ -1,70 +1,60 @@
+// 현재 세션에서 사용할 동기화 코드(숏코드) 변수
+let CURRENT_SYNC_CODE = localStorage.getItem('mobinogi-sync-id') || '';
+
 // URL이 /8자리숏코드 형식이면 자동 동기화
 (function() {
   const path = location.pathname.replace(/^\//, '');
-  const localSyncId = localStorage.getItem('mobinogi-sync-id');
-  const localShort = localSyncId ? localSyncId.slice(0, 8) : '';
-  // API 주소 자동 선택
+  // API 주소 자동 선택 (필요시)
   let API_BASE;
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
     API_BASE = 'http://localhost/api.php';
   } else {
     API_BASE = 'https://mobinogi.elmi.page/api.php';
   }
+
+  // 1. path가 8자리 숏코드일 경우
   if (/^[a-zA-Z0-9]{8}$/.test(path)) {
-    // 이미 localStorage에 sync_id가 있고, 앞 8자리가 현재 path와 같으면 아무 동작도 하지 않음
-    if (localShort === path) return;
-    // sync_id가 없으면 fetch 시도, 실패 시 메인(/)으로 강제 이동
-    if (!localSyncId) {
-      fetch(`${API_BASE}?action=shortcode&short_code=${path}`)
-        .then(res => res.ok ? res.json() : Promise.reject())
-        .then(result => {
-          localStorage.setItem('mobinogi-sync-id', result.sync_id);
-          location.reload();
-        })
-        .catch(() => {
-          location.replace('/'); // 동기화 코드가 없으면 메인으로 이동
-        });
+    // localStorage에 sync_id가 없거나 다르면 path(숏코드)로 저장
+    if (!CURRENT_SYNC_CODE || CURRENT_SYNC_CODE !== path) {
+      localStorage.setItem('mobinogi-sync-id', path);
+      CURRENT_SYNC_CODE = path;
+    }
+    // 페이지 이동/새로고침 없음
+    return;
+  }
+
+  // 2. 메인(/)일 경우
+  if (path === '') {
+    // localStorage에 동기화 코드(숏코드)가 있으면 /숏코드로 이동
+    if (CURRENT_SYNC_CODE) {
+      location.replace('/' + CURRENT_SYNC_CODE);
       return;
     }
-    // sync_id가 있는데 앞 8자리가 다르면 기존대로 fetch
-    fetch(`${API_BASE}?action=shortcode&short_code=${path}`)
-      .then(res => res.ok ? res.json() : Promise.reject())
-      .then(result => {
-        localStorage.setItem('mobinogi-sync-id', result.sync_id);
-        location.reload();
-      })
-      .catch(() => {
-        location.replace('/'); // 동기화 코드가 없으면 메인으로 이동
-      });
+    // 동기화 코드 없으면 그대로 메인(/) 상태
+    return;
   }
 })();
 
 // 동기화 및 DB 관련 함수 분리
 
-// 64자리 영숫자 UUID 생성 함수
-function generateSyncId() {
-  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let id = '';
-  for (let i = 0; i < 64; i++) {
-    id += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return id;
-}
-
-// sync_id를 localStorage에서 가져오거나 새로 생성
+// sync_id를 공통 변수에서 가져오거나 새로 생성 (숏코드만)
 function getOrCreateSyncId() {
-  let id = localStorage.getItem('mobinogi-sync-id');
-  if (!id) {
-    id = generateSyncId();
+  if (!CURRENT_SYNC_CODE) {
+    // 8자리 랜덤 코드 생성
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let id = '';
+    for (let i = 0; i < 8; i++) {
+      id += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
     localStorage.setItem('mobinogi-sync-id', id);
+    CURRENT_SYNC_CODE = id;
   }
-  return id;
+  return CURRENT_SYNC_CODE;
 }
 
-// 숏코드(앞 8자리) 생성 (없으면 빈 문자열 반환)
+// 숏코드(8자리) 반환 (없으면 빈 문자열)
 function getShortCode() {
-  const id = localStorage.getItem('mobinogi-sync-id');
-  return id ? id.slice(0, 8) : '';
+  return CURRENT_SYNC_CODE && CURRENT_SYNC_CODE.length === 8 ? CURRENT_SYNC_CODE : '';
 }
 
 // 메시지 영역에 메시지 표시 함수 (index.html에 message-area div 필요)
@@ -153,6 +143,7 @@ function submitSyncInput() {
     })
     .then(result => {
       localStorage.setItem('mobinogi-sync-id', result.sync_id);
+      CURRENT_SYNC_CODE = result.sync_id;
       showMessage('동기화가 완료되었습니다! 페이지를 새로고침합니다.', 'success');
       setTimeout(() => location.reload(), 1200);
     })
@@ -166,7 +157,6 @@ window.submitSyncInput = submitSyncInput;
 window.importDataCode = showSyncInputBox;
 
 // window에 등록 (main.js에서는 import 하지 않고, sync.js만 window에 등록)
-window.generateSyncId = generateSyncId;
 window.getOrCreateSyncId = getOrCreateSyncId;
 window.getShortCode = getShortCode;
 
