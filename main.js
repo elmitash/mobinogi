@@ -521,7 +521,7 @@ document.getElementById('quest-popup-add').addEventListener('click', function() 
     }
   }
   if (!name) {
-    showMessage('항목명을 입력하세요.');
+    showMessage('퀘스트 이름을 입력하세요.');
     return;
   }
   let tIdx;
