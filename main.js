@@ -327,19 +327,14 @@ window.addCharacter = function() {
     if (!CURRENT_SYNC_CODE && window.getOrCreateSyncId) {
       CURRENT_SYNC_CODE = window.getOrCreateSyncId();
     }
-    // select-count 타입은 남은 횟수로, 초기값을 max로 설정
+    // select-count 타입 초기값 설정 코드 삭제
     let tasks = {};
-    DAILY_TASKS.forEach(task => {
-      if (task.type === 'select-count') {
-        tasks[task.id] = task.max;
-      }
-    });
     characters.push({ name, tasks });
     saveData();
     renderCharacters();
     renderSyncCode(); // 캐릭터 추가 후 동기화 코드 즉시 표시
     if (CURRENT_SYNC_CODE) {
-      location.href = `/?code=${CURRENT_SYNC_CODE}`;
+      history.pushState({}, '', '/' + CURRENT_SYNC_CODE);
     }
   }
 };
