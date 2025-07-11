@@ -661,47 +661,67 @@ function showMemoPopup(idx) {
   let bg = document.getElementById('memo-popup-bg');
   const charName = characters[idx]?.name || '';
   memoPopupInitialValue = characters[idx].memo || '';
+  if (!bg) {
+    bg = document.createElement('div');
+    bg.id = 'memo-popup-bg';
+    bg.className = 'memo-popup-bg';
+    document.body.appendChild(bg);
+  } else {
+    bg.style.display = 'block';
+    bg.className = 'memo-popup-bg';
+  }
   if (!popup) {
     popup = document.createElement('div');
     popup.id = 'memo-popup';
-    popup.style.position = 'fixed';
-    popup.style.left = '50%';
-    popup.style.top = '50%';
-    popup.style.transform = 'translate(-50%, -50%)';
-    popup.style.zIndex = '9999';
-    popup.style.background = '#fff';
-    popup.style.borderRadius = '12px';
-    popup.style.boxShadow = '0 4px 24px rgba(0,0,0,0.2)';
-    popup.style.padding = '24px 20px 16px 20px';
-    popup.style.minWidth = '640px';
+    popup.className = 'memo-popup';
     popup.innerHTML = `
-      <div style="font-weight:bold;font-size:1.2rem;margin-bottom:8px;">${charName}에 관한 메모</div>
-      <textarea id="memo-textarea" style="width:100%;height:240px;resize:vertical;font-size:1rem;padding:8px;border-radius:8px;border:1px solid #ccc;">${memoPopupInitialValue}</textarea>
+      <div id="memo-popup-title" class="memo-popup-title">${charName}에 관한 메모</div>
+      <textarea id="memo-textarea" class="memo-textarea">${memoPopupInitialValue}</textarea>
       <div class="d-flex justify-content-end mt-3">
         <button class="btn btn-primary" id="memo-save-btn">저장</button>
       </div>
     `;
     document.body.appendChild(popup);
-  } else {
-    popup.style.display = 'block';
-    popup.style.minWidth = '640px';
-    document.getElementById('memo-textarea').style.height = '240px';
-    document.getElementById('memo-textarea').value = memoPopupInitialValue;
-    document.querySelector('#memo-popup > div').textContent = `'${charName}'에 관한 메모`;
   }
-  if (!bg) {
-    bg = document.createElement('div');
-    bg.id = 'memo-popup-bg';
-    bg.style.position = 'fixed';
-    bg.style.left = '0';
-    bg.style.top = '0';
-    bg.style.width = '100vw';
-    bg.style.height = '100vh';
-    bg.style.background = 'rgba(0,0,0,0.2)';
-    bg.style.zIndex = '9998';
-    document.body.appendChild(bg);
-  } else {
-    bg.style.display = 'block';
+  // 팝업을 열 때마다 중앙 위치로 초기화
+  popup.style.display = 'block';
+  popup.className = 'memo-popup';
+  popup.style.left = '50%';
+  popup.style.top = '50%';
+  popup.style.transform = 'translate(-50%, -50%)';
+  document.getElementById('memo-textarea').className = 'memo-textarea';
+  document.getElementById('memo-textarea').value = memoPopupInitialValue;
+  document.querySelector('#memo-popup-title').textContent = `${charName}에 관한 메모`;
+  
+  // jQuery UI 드래그 기능 재설정 (기존 이벤트 제거 후 새로 추가)
+  if (window.jQuery && window.jQuery.fn.draggable) {
+    const $popup = window.jQuery('#memo-popup');
+    // 기존 draggable 제거
+    if ($popup.hasClass('ui-draggable')) {
+      $popup.draggable('destroy');
+    }
+    // 새로 draggable 적용
+    $popup.draggable({ 
+      handle: '#memo-popup-title',
+      containment: 'window', // 팝업이 화면 바깥으로 나가지 않도록 제한
+      start: function(event, ui) {
+        // 드래그 시작 시 transform을 제거하고 절대 위치 계산
+        const $this = window.jQuery(this);
+        
+        // 현재 transform이 적용된 상태에서의 실제 위치 계산
+        // getBoundingClientRect는 transform 적용 후 위치를 반환
+        const rect = this.getBoundingClientRect();
+        
+        // transform을 제거하고 left, top을 설정
+        // 50%, 50% 위치에서 translate(-50%, -50%)가 적용된 상태이므로
+        // 실제 위치는 rect.left, rect.top이 맞음
+        $this.css({
+          left: rect.left + 'px',
+          top: rect.top + 'px',
+          transform: 'none'
+        });
+      }
+    });
   }
   document.getElementById('memo-save-btn').onclick = saveMemoAndClose;
   bg.onclick = saveMemoAndClose;

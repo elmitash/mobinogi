@@ -1,0 +1,64 @@
+/* 메모 팝업 및 배경, textarea, 드래그 스타일 등 모든 팝업 관련 스타일 */
+.memo-popup {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 400px;
+  max-width: 90vw;
+  min-height: 300px;
+  max-height: 80vh;
+  z-index: 1001;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+  padding: 24px 20px 20px 20px;
+  display: none;
+  overflow: visible;
+}
+
+/* 팝업 내부 모든 요소들의 z-index 보장 */
+.memo-popup * {
+  position: relative;
+  z-index: 1002;
+}
+
+.memo-popup-title {
+  font-weight: bold;
+  font-size: 1.2rem;
+  margin-bottom: 8px;
+  cursor: move;
+  user-select: none;
+  background: #fff;
+}
+
+body.dark-mode .memo-popup-title {
+  color: #e0e0e0; /* 다크모드에서 팝업 타이틀 색상 */
+  background-color: #222; /* 다크모드에서 팝업 배경색 */
+}
+
+.memo-popup-bg {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0,0,0,0.4);
+  z-index: 1000;
+  display: none;
+  transition: background 0.2s;
+}
+
+.memo-textarea {
+  width: 100%;
+  min-height: 200px;
+  max-height: 400px;
+  resize: vertical;
+  font-size: 1rem;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #444;
+  background: #fff;
+  color: #222;
+  box-sizing: border-box;
+}
