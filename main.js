@@ -119,6 +119,11 @@ function autoResetTasks() {
   // 주간 초기화: 이번주 월요일 오전 6시
   const monday6 = new Date(today6);
   monday6.setDate(today6.getDate() - ((today6.getDay() + 6) % 7));
+  // KST 변환 함수
+  function toKSTISOString(date) {
+    const kst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+    return kst.toISOString().replace('Z', '+09:00');
+  }
   // 일일 퀘스트 초기화
   if (!lastReset.daily || new Date(lastReset.daily) < today6) {
     characters.forEach(char => {
@@ -134,7 +139,7 @@ function autoResetTasks() {
       // 사용자 추가 일일 퀘스트
       userDailyTasks.forEach((_, tIdx) => { delete char.tasks[`user-daily-${tIdx}`]; });
     });
-    lastReset.daily = today6.toISOString();
+    lastReset.daily = toKSTISOString(today6);
     if (characters.length > 0) saveData();
   }
   // 주간 초기화: 이번주 월요일 오전 6시
@@ -146,7 +151,7 @@ function autoResetTasks() {
       // 필드보스 체크
       FIELD_BOSSES.forEach(boss => { delete char.tasks[boss.id]; });
     });
-    lastReset.weekly = monday6.toISOString();
+    lastReset.weekly = toKSTISOString(monday6);
     if (characters.length > 0) saveData();
   }
 }
