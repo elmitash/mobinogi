@@ -161,7 +161,7 @@ function renderCharacters() {
   row.innerHTML = '';
   // 캐릭터 박스 렌더링
   for (let i = 0; i < characters.length; i++) {
-    const char = characters[i] || { name: '', tasks: {} };
+    const char = characters[i] || { name: '', tasks: {}, memo: '' };
     if (showDeleteButtons[i] === undefined) showDeleteButtons[i] = false;
     const col = document.createElement('div');
     col.className = 'col-md-2 mb-3';
@@ -171,6 +171,7 @@ function renderCharacters() {
           <div class="mb-2 d-flex align-items-center justify-content-center gap-2">
             <span class="fw-bold" id="char-name-${i}">${char.name}</span>
             <button class="btn btn-sm btn-outline-secondary" onclick="editName(${i})">수정</button>
+            <button class="btn btn-sm btn-outline-info" onclick="showMemoPopup(${i})">메모</button>
           </div>
           <ul class="list-group list-group-flush" id="char-task-list-${i}"></ul>
         </div>
@@ -650,3 +651,75 @@ window.resetQuestItems = function() {
 
 // 페이지 로드 시 데이터 불러오기
 loadData().then(renderCharacters);
+
+// 메모 팝업 관련
+let memoPopupIdx = null;
+let memoPopupInitialValue = '';
+function showMemoPopup(idx) {
+  memoPopupIdx = idx;
+  let popup = document.getElementById('memo-popup');
+  let bg = document.getElementById('memo-popup-bg');
+  const charName = characters[idx]?.name || '';
+  memoPopupInitialValue = characters[idx].memo || '';
+  if (!popup) {
+    popup = document.createElement('div');
+    popup.id = 'memo-popup';
+    popup.style.position = 'fixed';
+    popup.style.left = '50%';
+    popup.style.top = '50%';
+    popup.style.transform = 'translate(-50%, -50%)';
+    popup.style.zIndex = '9999';
+    popup.style.background = '#fff';
+    popup.style.borderRadius = '12px';
+    popup.style.boxShadow = '0 4px 24px rgba(0,0,0,0.2)';
+    popup.style.padding = '24px 20px 16px 20px';
+    popup.style.minWidth = '640px';
+    popup.innerHTML = `
+      <div style="font-weight:bold;font-size:1.2rem;margin-bottom:8px;">${charName}에 관한 메모</div>
+      <textarea id="memo-textarea" style="width:100%;height:240px;resize:vertical;font-size:1rem;padding:8px;border-radius:8px;border:1px solid #ccc;">${memoPopupInitialValue}</textarea>
+      <div class="d-flex justify-content-end mt-3">
+        <button class="btn btn-primary" id="memo-save-btn">저장</button>
+      </div>
+    `;
+    document.body.appendChild(popup);
+  } else {
+    popup.style.display = 'block';
+    popup.style.minWidth = '640px';
+    document.getElementById('memo-textarea').style.height = '240px';
+    document.getElementById('memo-textarea').value = memoPopupInitialValue;
+    document.querySelector('#memo-popup > div').textContent = `'${charName}'에 관한 메모`;
+  }
+  if (!bg) {
+    bg = document.createElement('div');
+    bg.id = 'memo-popup-bg';
+    bg.style.position = 'fixed';
+    bg.style.left = '0';
+    bg.style.top = '0';
+    bg.style.width = '100vw';
+    bg.style.height = '100vh';
+    bg.style.background = 'rgba(0,0,0,0.2)';
+    bg.style.zIndex = '9998';
+    document.body.appendChild(bg);
+  } else {
+    bg.style.display = 'block';
+  }
+  document.getElementById('memo-save-btn').onclick = saveMemoAndClose;
+  bg.onclick = saveMemoAndClose;
+}
+window.showMemoPopup = showMemoPopup;
+function saveMemoAndClose() {
+  if (memoPopupIdx !== null) {
+    const val = document.getElementById('memo-textarea').value;
+    if (!characters[memoPopupIdx]) characters[memoPopupIdx] = { name: '', tasks: {}, memo: '' };
+    if (val !== memoPopupInitialValue) {
+      characters[memoPopupIdx].memo = val;
+      saveData();
+    }
+    memoPopupIdx = null;
+    memoPopupInitialValue = '';
+  }
+  const popup = document.getElementById('memo-popup');
+  const bg = document.getElementById('memo-popup-bg');
+  if (popup) popup.style.display = 'none';
+  if (bg) bg.style.display = 'none';
+}
