@@ -2,19 +2,25 @@
 // 동기화 및 DB 관련 함수는 sync.js에서 window에 등록하여 사용
 
 // 캐릭터 및 해야할 일 정보
-const MAX_CHARACTERS = 5;
+const MAX_CHARACTERS = 6;
+const FIELD_BOSSES = [
+  { id: 'pery', name: '페리' },
+  { id: 'crab', name: '크라브바흐' },
+  { id: 'krama', name: '크라마' },
+  { id: 'drohe', name: '드로흐에넴' }
+];
 const DAILY_TASKS = [
-  { name: '매일 무료 상품', type: 'servercheck' },
-  { name: '검은구멍(남은횟수)', type: 'select-count', max: 3 },
-  { name: '불길한 결계(남은횟수)', type: 'select-count', max: 2 },
-  { name: '퍼거스 교환', type: 'check' },
-  { name: '네리스 교환', type: 'check' }
+  { id: 'dailyfree', name: '매일 무료 상품', type: 'servercheck' },
+  { id: 'blackhole', name: '검은구멍(남은횟수)', type: 'select-count', max: 3 },
+  { id: 'ominous', name: '불길한 결계(남은횟수)', type: 'select-count', max: 2 },
+  { id: 'fergus', name: '퍼거스 교환', type: 'check' },
+  { id: 'neris', name: '네리스 교환', type: 'check' }
 ];
 const WEEKLY_TASKS = [
-  { name: '필드보스3종', type: 'check' },
-  { name: '어비스 던전3종', type: 'check' },
-  { name: '글라스기브넨 레이드', type: 'check' },
-  { name: '서큐버스 레이드', type: 'check' }
+  { id: 'fieldboss', name: '주간 필드보스', type: 'fieldboss-group' },
+  { id: 'abyss', name: '어비스 던전', type: 'check' },
+  { id: 'glas', name: '글라스기브넨 레이드', type: 'check' },
+  { id: 'succubus', name: '서큐버스 레이드', type: 'check' }
 ];
 
 // API 서버 주소: 도메인에 따라 자동 선택
@@ -29,6 +35,8 @@ let characters = [];
 let userDailyTasks = [];
 let userWeeklyTasks = [];
 let lastReset = { daily: null, weekly: null };
+let removedDailyTaskIds = [];
+let removedWeeklyTaskIds = [];
 let showDeleteButtons = [];
 
 // 현재 세션에서 사용할 동기화 코드(숏코드) 변수
@@ -42,6 +50,8 @@ async function loadData() {
     characters = [];
     userDailyTasks = [];
     userWeeklyTasks = [];
+    removedDailyTaskIds = [];
+    removedWeeklyTaskIds = [];
     lastReset = { daily: null, weekly: null };
     autoResetTasks();
     return;
@@ -55,11 +65,15 @@ async function loadData() {
       characters = parsed;
       userDailyTasks = [];
       userWeeklyTasks = [];
+      removedDailyTaskIds = [];
+      removedWeeklyTaskIds = [];
       lastReset = { daily: null, weekly: null };
     } else {
       characters = parsed.characters || [];
       userDailyTasks = parsed.userDailyTasks || [];
       userWeeklyTasks = parsed.userWeeklyTasks || [];
+      removedDailyTaskIds = parsed.removedDailyTaskIds || [];
+      removedWeeklyTaskIds = parsed.removedWeeklyTaskIds || [];
       lastReset = parsed.lastReset || { daily: null, weekly: null };
     }
   } catch (e) {
@@ -67,10 +81,11 @@ async function loadData() {
     characters = [];
     userDailyTasks = [];
     userWeeklyTasks = [];
+    removedDailyTaskIds = [];
+    removedWeeklyTaskIds = [];
     lastReset = { daily: null, weekly: null };
   }
   autoResetTasks();
-  ensureDefaultTasks();
 }
 
 // API로 데이터 저장
@@ -84,7 +99,7 @@ async function saveData() {
   }
   const syncId = CURRENT_SYNC_CODE;
   const shortCode = CURRENT_SYNC_CODE;
-  const data = { characters, userDailyTasks, userWeeklyTasks, lastReset };
+  const data = { characters, userDailyTasks, userWeeklyTasks, removedDailyTaskIds, removedWeeklyTaskIds, lastReset };
   try {
     await fetch(`${API_BASE}?action=data`, {
       method: 'POST',
@@ -96,59 +111,120 @@ async function saveData() {
   }
 }
 
-function autoResetTasks() {
-  const now = new Date();
-  // 일일 초기화: 오늘 오전 6시
-  const today6 = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 6, 0, 0, 0);
-  if (now < today6) today6.setDate(today6.getDate() - 1); // 6시 전이면 전날 6시
-  // 주간 초기화: 이번주 월요일 오전 6시
-  const monday6 = new Date(today6);
-  monday6.setDate(today6.getDate() - ((today6.getDay() + 6) % 7));
-  // KST 변환 함수
-  function toKSTISOString(date) {
-    const kst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
-    return kst.toISOString().replace('Z', '+09:00');
+/**
+ * 주어진 Date 객체 또는 타임스탬프를 한국 시간(Asia/Seoul) 기준으로 변환하여
+ * 구조화된 객체로 반환합니다.
+ * @param {Date | number} dateInput - 변환할 Date 객체 또는 UTC 타임스탬프.
+ * @returns {{year: number, month: number, day: number, hour: number, dayOfWeek: number}}
+ *          dayOfWeek: 0=일요일, 1=월요일, ..., 6=토요일
+ */
+function getKST_Info(dateInput) {
+  const formatter = new Intl.DateTimeFormat('en-US', { // en-US for reliable weekday format
+    timeZone: 'Asia/Seoul',
+    weekday: 'short', // 'Mon', 'Tue' 등 요일 정보
+  });
+  const weekday = formatter.format(new Date(dateInput));
+  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  return { dayOfWeek: weekdays.indexOf(weekday) };
+}
+
+/**
+ * 마지막 저장 시간과 현재 시간을 비교하여 퀘스트 초기화가 필요한지 확인합니다.
+ * 모든 계산은 한국 시간(KST)을 기준으로 합니다.
+ * @param {string | null} lastResetDailyISO - 마지막 일일 초기화 시점의 ISO 문자열 (KST 기준)
+ * @param {string | null} lastResetWeeklyISO - 마지막 주간 초기화 시점의 ISO 문자열 (KST 기준)
+ * @returns {{
+ *   needsDailyReset: boolean, 
+ *   needsWeeklyReset: boolean,
+ *   latestDailyResetTimestamp: number,
+ *   latestWeeklyResetTimestamp: number
+ * }}
+ */
+function checkQuestResetTimestamps(lastResetDailyISO, lastResetWeeklyISO) {
+  const nowTimestamp = Date.now();
+
+  // --- 가장 최근의 '일일 초기화 시점 (매일 오전 6시 KST)'의 타임스탬프 계산 ---
+  // KST 오전 6시는 UTC 기준 전날 오후 9시(21:00)입니다.
+  let dailyResetPoint = new Date();
+  dailyResetPoint.setUTCHours(21, 0, 0, 0); // 오늘 날짜의 UTC 21시로 설정
+
+  // 만약 현재 시각이 '오늘의 KST 오전 6시'보다 이르다면,
+  // 가장 최근 초기화 시점은 어제 KST 오전 6시여야 합니다.
+  if (nowTimestamp < dailyResetPoint.getTime()) {
+    dailyResetPoint.setDate(dailyResetPoint.getDate() - 1);
   }
-  // 일일 퀘스트 초기화
-  if (!lastReset.daily || new Date(lastReset.daily) < today6) {
+  const latestDailyResetTimestamp = dailyResetPoint.getTime();
+
+  // --- 가장 최근의 '주간 초기화 시점 (매주 월요일 오전 6시 KST)'의 타임스탬프 계산 ---
+  let weeklyResetPoint = new Date(latestDailyResetTimestamp); // 일일 초기화 시점에서 시작
+
+  // [수정] getUTCDay() 대신, 시간대에 안전한 헬퍼 함수를 사용해 정확한 KST 요일을 얻습니다.
+  const kstInfo = getKST_Info(weeklyResetPoint);
+  const dayOfWeekKST = kstInfo.dayOfWeek; // 0=일요일, 1=월요일...
+  // KST의 요일은 UTC+9 이므로, UTC 시간이 21시 이상이면 다음날 요일임
+  // 간단하게 하기 위해 dayOfWeekUTC를 그대로 사용해도 큰 문제 없음 (경계선에서 9시간 오차)
+  // 더 정확하려면 KST 요일을 계산해야하지만, 이 정도도 대부분의 경우 충분
+  const daysToSubtract = (dayOfWeekKST - 1 + 7) % 7;
+  weeklyResetPoint.setDate(weeklyResetPoint.getDate() - daysToSubtract);
+  const latestWeeklyResetTimestamp = weeklyResetPoint.getTime();
+
+  // --- 마지막 초기화 시간과 비교 ---
+  const lastDailyTime = lastResetDailyISO ? new Date(lastResetDailyISO).getTime() : 0;
+  const lastWeeklyTime = lastResetWeeklyISO ? new Date(lastResetWeeklyISO).getTime() : 0;
+
+  return {
+    needsDailyReset: lastDailyTime < latestDailyResetTimestamp,
+    needsWeeklyReset: lastWeeklyTime < latestWeeklyResetTimestamp,
+    latestDailyResetTimestamp: latestDailyResetTimestamp,
+    latestWeeklyResetTimestamp: latestWeeklyResetTimestamp
+  };
+}
+
+function autoResetTasks() {
+  // 초기화가 필요한지 안전하게 확인
+  const resetStatus = checkQuestResetTimestamps(lastReset.daily, lastReset.weekly);
+
+  let dataChanged = false;
+
+  // 일일 퀘스트 초기화: 한국 시간 기준 매일 오전 6시
+  if (resetStatus.needsDailyReset) {
     characters.forEach(char => {
       if (!char.tasks) return;
-      // 일일 퀘스트
+      // 기본 일일 퀘스트
+      DAILY_TASKS.forEach(task => {
+        if (task.type === 'select-count') {
+          char.tasks[task.id] = task.max;
+        } else {
+          delete char.tasks[task.id];
+        }
+      });
+      // 사용자 추가 일일 퀘스트
       userDailyTasks.forEach((_, tIdx) => { delete char.tasks[`user-daily-${tIdx}`]; });
     });
-    lastReset.daily = toKSTISOString(today6);
-    if (characters.length > 0) saveData();
+    // 마지막 초기화 시간을 '가장 최근의 초기화 시점' 타임스탬프로 업데이트
+    lastReset.daily = new Date(resetStatus.latestDailyResetTimestamp).toISOString();
+    dataChanged = true;
   }
-  // 주간 초기화: 이번주 월요일 오전 6시
-  if (!lastReset.weekly || new Date(lastReset.weekly) < monday6) {
+  // 주간 퀘스트 초기화: 한국 시간 기준 이번주 월요일 오전 6시
+  if (resetStatus.needsWeeklyReset) {
     characters.forEach(char => {
       if (!char.tasks) return;
-      // 주간 퀘스트
+      // 기본 주간 퀘스트 초기화
+      WEEKLY_TASKS.forEach(task => { delete char.tasks[task.id]; });
+      // 필드보스 체크 초기화
+      FIELD_BOSSES.forEach(boss => { delete char.tasks[boss.id]; });
+      // [추가] 유저가 추가한 주간 퀘스트도 모두 초기화
       userWeeklyTasks.forEach((_, tIdx) => { delete char.tasks[`user-weekly-${tIdx}`]; });
     });
-    lastReset.weekly = toKSTISOString(monday6);
-    if (characters.length > 0) saveData();
+    lastReset.weekly = new Date(resetStatus.latestWeeklyResetTimestamp).toISOString();
+    dataChanged = true;
+  }
+  // 변경 사항이 있을 경우에만 저장
+  if (dataChanged) {
+    saveData();
   }
 }
 
-// 기본 퀘스트도 샘플 퀘스트로 취급하여 삭제 가능하게 변경. 삭제 버튼 항상 표시
-// 최초 로드 시 기본 퀘스트를 배열에 추가
-function ensureDefaultTasks() {
-  // 일일 퀘스트
-  if (userDailyTasks.length === 0) {
-    DAILY_TASKS.forEach(task => {
-      userDailyTasks.push({ ...task });
-    });
-  }
-  // 주간 퀘스트
-  if (userWeeklyTasks.length === 0) {
-    WEEKLY_TASKS.forEach(task => {
-      userWeeklyTasks.push({ ...task });
-    });
-  }
-}
-
-// 캐릭터 박스 렌더링
 function renderCharacters() {
   const row = document.getElementById('character-row');
   row.innerHTML = '';
@@ -196,25 +272,49 @@ function renderCharacterTasks(idx) {
   const ul = document.getElementById(`char-task-list-${idx}`);
   if (!ul) return;
   ul.innerHTML = '';
-  // 일일/주간 퀘스트를 하나의 리스트로 렌더링
+  // 일일 퀘스트 헤더 + 버튼 + 항목 삭제 버튼
   let dailyHeader = document.createElement('li');
   dailyHeader.className = 'list-group-item bg-light dark-bg fw-bold d-flex align-items-center justify-content-between';
-  dailyHeader.innerHTML = `<span>일일 퀘스트</span><span><button class=\"btn btn-sm btn-outline-primary ms-2\" onclick=\"addUserDailyTask()\" style=\"width: 30px;\">+</button><button class=\"btn btn-sm btn-outline-danger ms-2\" onclick=\"toggleDeleteMode(${idx}, 'daily')\" style=\"width: 30px;\">-</button></span>`;
+  dailyHeader.innerHTML = `
+    <span>일일 퀘스트</span>
+    <span>
+      <button class="btn btn-sm btn-outline-primary ms-2" onclick="addUserDailyTask()" style="width: 30px;">+</button>
+      <button class="btn btn-sm btn-outline-danger ms-2" onclick="toggleDeleteMode(${idx})" style="width: 30px;">-</button>
+    </span>
+  `;
   ul.appendChild(dailyHeader);
-  let userDailyUl = document.createElement('ul');
-  userDailyUl.id = `user-daily-list-${idx}`;
-  userDailyUl.className = 'user-daily-list list-unstyled';
-  userDailyTasks.forEach((task, tIdx) => {
-    let name = task.name;
-    let type = task.type || 'check';
-    let max = type === 'select-count' ? (task.max || 1) : 1;
+  // 기본 일일 퀘스트(삭제된 id 제외)
+  DAILY_TASKS.forEach(task => {
+    if (removedDailyTaskIds.includes(task.id)) return;
     let li = document.createElement('li');
-    li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg user-daily-item';
-    li.setAttribute('data-idx', tIdx);
-    let minusBtn = showDeleteButtons[idx]?.daily ? `<button class=\"btn btn-sm btn-outline-danger ms-2 py-0 px-2\" style=\"font-size:1rem;line-height:1;vertical-align:middle;\" onclick=\"removeUserDailyTask(${tIdx})\">-</button>` : '';
+    li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg';
+    let minusBtn = showDeleteButtons[idx] ? `<button class=\"btn btn-sm btn-outline-danger ms-2 py-0 px-2\" style=\"font-size:1rem;line-height:1;vertical-align:middle;\" onclick=\"removeDefaultDailyTask('${task.id}')\">-</button>` : '';
+    if (task.type === 'check' || task.type === 'servercheck') {
+      li.innerHTML = `<span>${task.name} ${minusBtn}</span><div class=\"form-switch\"><input type=\"checkbox\" class=\"form-check-input form-check-lg\" style=\"width:2.5em;height:2em;\" id=\"task-${task.id}-${idx}\" ${char.tasks[task.id] ? 'checked' : ''} onchange=\"toggleTask(${idx}, '${task.id}')\"></div>`;
+      ul.appendChild(li);
+    } else if (task.type === 'select-count') {
+      // 남은 횟수로 표시, 0~max까지 버튼, 초기값은 max
+      const val = typeof char.tasks[task.id] === 'number' ? char.tasks[task.id] : task.max;
+      let btns = '';
+      for (let n = task.max; n >= 0; n--) {
+        btns += `<button class=\"btn btn-sm me-1 ${val === n ? 'btn-success' : 'btn-outline-secondary'}\" onclick=\"selectCount(${idx}, '${task.id}', ${n})\">${n}</button>`;
+      }
+      li.innerHTML = `<span>${task.name} ${minusBtn}</span><span>${btns}</span>`;
+      ul.appendChild(li);
+    }
+  });
+  // 사용자 추가 일일 퀘스트
+  // userDailyTasks 렌더링 (객체 지원)
+  userDailyTasks.forEach((task, tIdx) => {
+    let name = typeof task === 'string' ? task : task.name;
+    let type = typeof task === 'string' ? 'check' : (task.type || 'check');
+    let max = typeof task === 'object' && task.type === 'select-count' ? (task.max || 1) : 1;
+    let li = document.createElement('li');
+    li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg';
+    let minusBtn = showDeleteButtons[idx] ? `<button class="btn btn-sm btn-outline-danger ms-2 py-0 px-2" style="font-size:1rem;line-height:1;vertical-align:middle;" onclick="removeUserDailyTask(${tIdx})">-</button>` : '';
     if (type === 'check' || type === 'servercheck') {
-      li.innerHTML = `<span>${name} ${minusBtn}</span><div class=\"form-switch\"><input class=\"form-check-input form-check-lg\" type=\"checkbox\" style=\"width:2.5em;height:2em;\" id=\"user-daily-${tIdx}-${idx}\" ${char.tasks[`user-daily-${tIdx}`] ? 'checked' : ''} onchange=\"toggleTask(${idx}, 'user-daily-${tIdx}')\"></div>`;
-      userDailyUl.appendChild(li);
+      li.innerHTML = `<span>${name} ${minusBtn}</span><div class="form-switch"><input class="form-check-input form-check-lg" type="checkbox" style="width:2.5em;height:2em;" id="user-daily-${tIdx}-${idx}" ${char.tasks[`user-daily-${tIdx}`] ? 'checked' : ''} onchange="toggleTask(${idx}, 'user-daily-${tIdx}')"></div>`;
+      ul.appendChild(li);
     } else if (type === 'select-count') {
       const val = typeof char.tasks[`user-daily-${tIdx}`] === 'number' ? char.tasks[`user-daily-${tIdx}`] : max;
       let btns = '';
@@ -222,29 +322,60 @@ function renderCharacterTasks(idx) {
         btns += `<button class=\"btn btn-sm me-1 ${val === n ? 'btn-success' : 'btn-outline-secondary'}\" onclick=\"selectCount(${idx}, 'user-daily-${tIdx}', ${n})\">${n}</button>`;
       }
       li.innerHTML = `<span>${name} ${minusBtn}</span><span>${btns}</span>`;
-      userDailyUl.appendChild(li);
+      ul.appendChild(li);
     }
   });
-  ul.appendChild(userDailyUl);
-  // 주간 퀘스트
+  // 주간 퀘스트 헤더 + 버튼 + 항목 삭제 버튼
   let weeklyHeader = document.createElement('li');
   weeklyHeader.className = 'list-group-item bg-light dark-bg fw-bold d-flex align-items-center justify-content-between';
-  weeklyHeader.innerHTML = `<span>주간 퀘스트</span><span><button class=\"btn btn-sm btn-outline-primary ms-2\" onclick=\"addUserWeeklyTask()\" style=\"width: 30px;\">+</button><button class=\"btn btn-sm btn-outline-danger ms-2\" onclick=\"toggleDeleteMode(${idx}, 'weekly')\" style=\"width: 30px;\">-</button></span>`;
+  weeklyHeader.innerHTML = `
+    <span>주간 퀘스트</span>
+    <span>
+      <button class="btn btn-sm btn-outline-primary ms-2" onclick="addUserWeeklyTask()" style="width: 30px;">+</button>
+      <button class="btn btn-sm btn-outline-danger ms-2" onclick="toggleDeleteMode(${idx})" style="width: 30px;">-</button>
+    </span>
+  `;
   ul.appendChild(weeklyHeader);
-  let userWeeklyUl = document.createElement('ul');
-  userWeeklyUl.id = `user-weekly-list-${idx}`;
-  userWeeklyUl.className = 'user-weekly-list list-unstyled';
-  userWeeklyTasks.forEach((task, tIdx) => {
-    let name = task.name;
-    let type = task.type || 'check';
-    let max = type === 'select-count' ? (task.max || 1) : 1;
+  // 기본 주간 퀘스트(삭제된 id 제외)
+  WEEKLY_TASKS.forEach(task => {
+    if (removedWeeklyTaskIds.includes(task.id)) return;
     let li = document.createElement('li');
-    li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg user-weekly-item';
-    li.setAttribute('data-idx', tIdx);
-    let minusBtn = showDeleteButtons[idx]?.weekly ? `<button class=\"btn btn-sm btn-outline-danger ms-2 py-0 px-2\" style=\"font-size:1rem;line-height:1;vertical-align:middle;\" onclick=\"removeUserWeeklyTask(${tIdx})\">-</button>` : '';
+    li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg';
+    let minusBtn = showDeleteButtons[idx] ? `<button class="btn btn-sm btn-outline-danger ms-2 py-0 px-2" style="font-size:1rem;line-height:1;vertical-align:middle;" onclick="removeDefaultWeeklyTask('${task.id}')">-</button>` : '';
+    if (task.type === 'check') {
+      li.innerHTML = `<span>${task.name} ${minusBtn}</span><div class="form-switch"><input type="checkbox" class="form-check-input form-check-lg" style="width:2.5em;height:2em;" id="task-${task.id}-${idx}" ${char.tasks[task.id] ? 'checked' : ''} onchange="toggleTask(${idx}, '${task.id}')"></div>`;
+      ul.appendChild(li);
+    } else if (task.type === 'fieldboss-group') {
+      let checkedCount = FIELD_BOSSES.reduce((sum, boss) => sum + (char.tasks[boss.id] ? 1 : 0), 0);
+      let bossList = FIELD_BOSSES.map(boss => {
+        return `<div class="form-check form-switch d-flex align-items-center justify-content-between ms-3 mb-1">
+          <span>${boss.name}</span>
+          <input class="form-check-input form-check-lg" style="width:2.5em;height:2em;" type="checkbox" id="boss-${boss.id}-${idx}" ${char.tasks[boss.id] ? 'checked' : ''} onchange="toggleFieldBoss(${idx}, '${boss.id}')">
+        </div>`;
+      }).join('');
+      const highlight = checkedCount === 3 ? 'highlight-boss' : '';
+      li.innerHTML = `<div class="w-100">
+        <div class="d-flex align-items-center justify-content-between mb-1">
+          <span>주간 필드보스 (최대 3마리) ${minusBtn}</span>
+          <small class="text-muted ${highlight}">선택: ${checkedCount}/3</small>
+        </div>
+        ${bossList}
+      </div>`;
+      ul.appendChild(li);
+    }
+  });
+  // 사용자 추가 주간 퀘스트
+  // userWeeklyTasks 렌더링 (객체 지원)
+  userWeeklyTasks.forEach((task, tIdx) => {
+    let name = typeof task === 'string' ? task : task.name;
+    let type = typeof task === 'string' ? 'check' : (task.type || 'check');
+    let max = typeof task === 'object' && task.type === 'select-count' ? (task.max || 1) : 1;
+    let li = document.createElement('li');
+    li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg';
+    let minusBtn = showDeleteButtons[idx] ? `<button class=\"btn btn-sm btn-outline-danger ms-2 py-0 px-2\" style=\"font-size:1rem;line-height:1;vertical-align:middle;\" onclick=\"removeUserWeeklyTask(${tIdx})\">-</button>` : '';
     if (type === 'check' || type === 'servercheck') {
-      li.innerHTML = `<span>${name} ${minusBtn}</span><div class=\"form-switch\"><input class=\"form-check-input form-check-lg\" type="checkbox" style="width:2.5em;height:2em;" id="user-weekly-${tIdx}-${idx}" ${char.tasks[`user-weekly-${tIdx}`] ? 'checked' : ''} onchange="toggleTask(${idx}, 'user-weekly-${tIdx}')"></div>`;
-      userWeeklyUl.appendChild(li);
+      li.innerHTML = `<span>${name} ${minusBtn}</span><div class="form-switch"><input class="form-check-input form-check-lg" type="checkbox" style="width:2.5em;height:2em;" id="user-weekly-${tIdx}-${idx}" ${char.tasks[`user-weekly-${tIdx}`] ? 'checked' : ''} onchange="toggleTask(${idx}, 'user-weekly-${tIdx}')"></div>`;
+      ul.appendChild(li);
     } else if (type === 'select-count') {
       const val = typeof char.tasks[`user-weekly-${tIdx}`] === 'number' ? char.tasks[`user-weekly-${tIdx}`] : max;
       let btns = '';
@@ -252,45 +383,9 @@ function renderCharacterTasks(idx) {
         btns += `<button class=\"btn btn-sm me-1 ${val === n ? 'btn-success' : 'btn-outline-secondary'}\" onclick=\"selectCount(${idx}, 'user-weekly-${tIdx}', ${n})\">${n}</button>`;
       }
       li.innerHTML = `<span>${name} ${minusBtn}</span><span>${btns}</span>`;
-      userWeeklyUl.appendChild(li);
+      ul.appendChild(li);
     }
   });
-  ul.appendChild(userWeeklyUl);
-  // jQuery UI sortable 적용 (렌더 후)
-  setTimeout(function() {
-    if (window.jQuery && window.jQuery.fn.sortable) {
-      window.jQuery(`#user-daily-list-${idx}`).sortable({
-        axis: 'y',
-        items: '.user-daily-item',
-        update: function(event, ui) {
-          const $items = window.jQuery(this).children('.user-daily-item');
-          const newOrder = [];
-          $items.each(function() {
-            const tIdx = parseInt(window.jQuery(this).attr('data-idx'), 10);
-            newOrder.push(userDailyTasks[tIdx]);
-          });
-          userDailyTasks = newOrder;
-          saveData();
-          renderCharacters();
-        }
-      });
-      window.jQuery(`#user-weekly-list-${idx}`).sortable({
-        axis: 'y',
-        items: '.user-weekly-item',
-        update: function(event, ui) {
-          const $items = window.jQuery(this).children('.user-weekly-item');
-          const newOrder = [];
-          $items.each(function() {
-            const tIdx = parseInt(window.jQuery(this).attr('data-idx'), 10);
-            newOrder.push(userWeeklyTasks[tIdx]);
-          });
-          userWeeklyTasks = newOrder;
-          saveData();
-          renderCharacters();
-        }
-      });
-    }
-  }, 0);
 }
 
 // 스타일 추가
@@ -301,17 +396,13 @@ if (!document.getElementById('highlight-boss-style')) {
   document.head.appendChild(style);
 }
 
-function showMessage(msg, timeout = 3000) {
+function showMessage(msg, timeout = 2000) {
   const el = document.getElementById('message-area');
   if (!el) return;
   el.textContent = msg;
-  el.style.display = 'block';
   if (timeout > 0) {
     setTimeout(() => {
-      if (el.textContent === msg) {
-        el.textContent = '';
-        el.style.display = 'none';
-      }
+      if (el.textContent === msg) el.textContent = '';
     }, timeout);
   }
 }
@@ -327,8 +418,13 @@ window.addCharacter = function() {
     if (!CURRENT_SYNC_CODE && window.getOrCreateSyncId) {
       CURRENT_SYNC_CODE = window.getOrCreateSyncId();
     }
-    // select-count 타입 초기값 설정 코드 삭제
+    // select-count 타입은 남은 횟수로, 초기값을 max로 설정
     let tasks = {};
+    DAILY_TASKS.forEach(task => {
+      if (task.type === 'select-count') {
+        tasks[task.id] = task.max;
+      }
+    });
     characters.push({ name, tasks });
     saveData();
     renderCharacters();
@@ -371,6 +467,8 @@ window.deleteCharacter = function(idx) {
           localStorage.removeItem('mobinogi-sync-id');
           userDailyTasks = [];
           userWeeklyTasks = [];
+          removedDailyTaskIds = [];
+          removedWeeklyTaskIds = [];
           lastReset = { daily: null, weekly: null };
           renderCharacters();
           showMessage('모든 데이터가 삭제되었습니다.');
@@ -478,8 +576,6 @@ function showQuestPopup(mode) {
   document.getElementById('quest-popup-type').value = 'check';
   document.getElementById('quest-popup-count').value = 1;
   document.getElementById('quest-popup-count-wrap').style.display = 'none';
-  // 퀘스트 이름 입력 칸에 자동 포커스
-  document.getElementById('quest-popup-name').focus();
 }
 
 function hideQuestPopup() {
@@ -492,11 +588,6 @@ function hideQuestPopup() {
 function onQuestTypeChange() {
   const type = document.getElementById('quest-popup-type').value;
   document.getElementById('quest-popup-count-wrap').style.display = (type === 'select-count') ? 'block' : 'none';
-  if (type === 'select-count') {
-    const countInput = document.getElementById('quest-popup-count');
-    countInput.focus();
-    countInput.select(); // 기존 값 선택 상태로 만들어 숫자 입력 시 바로 덮어씀
-  }
 }
 
 document.getElementById('quest-popup-type').addEventListener('change', onQuestTypeChange);
@@ -508,12 +599,9 @@ document.getElementById('quest-popup-add').addEventListener('click', function() 
   const type = document.getElementById('quest-popup-type').value;
   let max = 1;
   if (type === 'select-count') {
-    const countInput = document.getElementById('quest-popup-count');
-    max = parseInt(countInput.value, 10);
-    if (isNaN(max) || max < 1 || max > 5) {
-      showMessage('횟수는 1~5 사이여야 합니다.');
-      countInput.focus();
-      countInput.select();
+    max = parseInt(document.getElementById('quest-popup-count').value, 10);
+    if (isNaN(max) || max < 1 || max > 20) {
+      showMessage('횟수는 1~20 사이여야 합니다.');
       return;
     }
   }
@@ -555,26 +643,40 @@ window.addUserWeeklyTask = function() {
   showQuestPopup('weekly');
 };
 
-// 삭제 함수에서 모든 퀘스트 삭제 가능
+window.removeDefaultDailyTask = function(taskId) {
+  if (!removedDailyTaskIds.includes(taskId)) removedDailyTaskIds.push(taskId);
+  characters.forEach(char => {
+    if (!char.tasks) return;
+    delete char.tasks[taskId];
+  });
+  saveData();
+  renderCharacters();
+};
+
+window.removeDefaultWeeklyTask = function(taskId) {
+  if (!removedWeeklyTaskIds.includes(taskId)) removedWeeklyTaskIds.push(taskId);
+  characters.forEach(char => {
+    if (!char.tasks) return;
+    delete char.tasks[taskId];
+  });
+  saveData();
+  renderCharacters();
+};
+
 window.removeUserDailyTask = function(tIdx) {
   userDailyTasks.splice(tIdx, 1);
   saveData();
   renderCharacters();
 };
+
 window.removeUserWeeklyTask = function(tIdx) {
   userWeeklyTasks.splice(tIdx, 1);
   saveData();
   renderCharacters();
 };
 
-// 삭제 버튼 토글 함수 (일일/주간 구분)
-window.toggleDeleteMode = function(idx, mode) {
-  if (!showDeleteButtons[idx]) showDeleteButtons[idx] = {};
-  if (mode === 'daily') {
-    showDeleteButtons[idx].daily = !showDeleteButtons[idx].daily;
-  } else if (mode === 'weekly') {
-    showDeleteButtons[idx].weekly = !showDeleteButtons[idx].weekly;
-  }
+window.toggleDeleteMode = function(idx) {
+  showDeleteButtons[idx] = !showDeleteButtons[idx];
   renderCharacterTasks(idx);
 };
 
@@ -594,6 +696,8 @@ window.resetAllData = function() {
       characters = [];
       userDailyTasks = [];
       userWeeklyTasks = [];
+      removedDailyTaskIds = [];
+      removedWeeklyTaskIds = [];
       lastReset = { daily: null, weekly: null };
       showMessage('모든 데이터가 초기화되었습니다. 메인으로 이동합니다.', 'success');
       setTimeout(() => { location.href = '/'; }, 1200);
@@ -605,9 +709,10 @@ window.resetAllData = function() {
 
 window.resetQuestItems = function() {
   if (!confirm('변경했던 퀘스트 항목만 초기화할까요? 캐릭터/진행상황은 유지됩니다.')) return;
-  // 샘플(기본) 퀘스트로 초기화
-  userDailyTasks = DAILY_TASKS.map(task => ({ ...task }));
-  userWeeklyTasks = WEEKLY_TASKS.map(task => ({ ...task }));
+  removedDailyTaskIds = [];
+  removedWeeklyTaskIds = [];
+  userDailyTasks = [];
+  userWeeklyTasks = [];
   saveData();
   renderCharacters();
   showMessage('퀘스트 항목이 초기화되었습니다.', 'success');
