@@ -11,7 +11,7 @@ $allowed_origins = [
 // 2. 브라우저가 보낸 Origin 헤더가 있는지, 그리고 허용 목록에 있는지 확인
 if (isset($_SERVER['HTTP_ORIGIN']) && in_array($_SERVER['HTTP_ORIGIN'], $allowed_origins)) {
     $origin = $_SERVER['HTTP_ORIGIN'];
-    
+
     // 3. 허용된 출처에 대한 헤더 전송
     header("Access-Control-Allow-Origin: " . $origin);
     header("Access-Control-Allow-Credentials: true");
@@ -40,7 +40,8 @@ $pdo = new PDO(
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
 );
 
-function json_response($data, $code = 200) {
+function json_response($data, $code = 200)
+{
     http_response_code($code);
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
@@ -52,12 +53,32 @@ $path = $_GET['action'] ?? '';
 // 1. 데이터 취득
 if ($method === 'GET' && $path === 'data') {
     $sync_id = $_GET['sync_id'] ?? '';
-    if (!$sync_id || strlen($sync_id) !== 8) json_response(['error'=>'invalid sync_id'], 400);
+    if (!$sync_id || strlen($sync_id) !== 8)
+        json_response(['error' => 'invalid sync_id'], 400);
     $stmt = $pdo->prepare('SELECT data_json FROM mobinogi_checklist WHERE sync_id = ?');
     $stmt->execute([$sync_id]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$row) json_response(['error'=>'not found'], 404);
-    json_response(['data'=>json_decode($row['data_json'], true)]);
+    if (!$row)
+        json_response(['error' => 'not found'], 404);
+    json_response(['data' => json_decode($row['data_json'], true)]);
+}
+
+// 1.5. 숏코드 확인 (sync_id 존재 여부 확인)
+if ($method === 'GET' && $path === 'shortcode') {
+    $short_code = $_GET['short_code'] ?? '';
+    if (!$short_code || strlen($short_code) !== 8)
+        json_response(['error' => 'invalid short_code'], 400);
+
+    // sync_id가 존재하는지 확인
+    $stmt = $pdo->prepare('SELECT sync_id FROM mobinogi_checklist WHERE sync_id = ?');
+    $stmt->execute([$short_code]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$row)
+        json_response(['error' => 'not found'], 404);
+
+    // 존재하면 sync_id 반환 (숏코드 = sync_id)
+    json_response(['sync_id' => $row['sync_id']]);
 }
 
 // 2. 데이터 저장(생성/갱신)
@@ -66,13 +87,13 @@ if ($method === 'POST' && $path === 'data') {
     $sync_id = $input['sync_id'] ?? '';
     $data = $input['data'] ?? null;
     if (!$sync_id || strlen($sync_id) !== 8 || !$data) {
-        json_response(['error'=>'invalid input'], 400);
+        json_response(['error' => 'invalid input'], 400);
     }
     $data_json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     // mobinogi_checklist upsert
     $pdo->prepare('INSERT INTO mobinogi_checklist (sync_id, data_json, created_at) VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE data_json=VALUES(data_json), updated_at=NOW()')
         ->execute([$sync_id, $data_json]);
-    json_response(['result'=>'ok']);
+    json_response(['result' => 'ok']);
 }
 
 // 3. 데이터 삭제 (sync_id 기준)
@@ -82,17 +103,17 @@ if ($method === 'POST' && $path === 'delete') {
     $sync_id = $input['sync_id'] ?? '';
     if (!$sync_id || strlen($sync_id) !== 8) {
         json_response([
-            'error'=>'invalid sync_id'
+            'error' => 'invalid sync_id'
         ], 400);
     }
     $stmt = $pdo->prepare('DELETE FROM mobinogi_checklist WHERE sync_id = ?');
     $stmt->execute([$sync_id]);
     if ($stmt->rowCount() === 0) {
         json_response([
-            'error'=>'not found or already deleted'
+            'error' => 'not found or already deleted'
         ], 404);
     }
-    json_response(['result'=>'deleted']);
+    json_response(['result' => 'deleted']);
 }
 
-json_response(['error'=>'invalid endpoint'], 404);
+json_response(['error' => 'invalid endpoint'], 404);

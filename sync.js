@@ -1,16 +1,19 @@
 // 현재 세션에서 사용할 동기화 코드(숏코드) 변수
 let CURRENT_SYNC_CODE = localStorage.getItem('mobinogi-sync-id') || '';
 
-// URL이 /8자리숏코드 형식이면 자동 동기화
-(function() {
-  const path = location.pathname.replace(/^\//, '');
-  // API 주소 자동 선택 (필요시)
-  let API_BASE;
+// API 주소 반환 함수
+function getApiBase() {
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-    API_BASE = 'http://localhost/api.php';
-  } else {
-    API_BASE = 'https://mobinogi.elmi.page/api.php';
+    return 'http://localhost/api.php';
   }
+  return 'https://mobinogi.elmi.page/api.php';
+}
+
+// URL이 /8자리숏코드 형식이면 자동 동기화
+(function () {
+  const path = location.pathname.replace(/^\//, '');
+  // API 주소 자동 선택
+  const API_BASE = getApiBase();
 
   // 1. path가 8자리 숏코드일 경우
   if (/^[a-zA-Z0-9]{8}$/.test(path)) {
@@ -136,7 +139,7 @@ function submitSyncInput() {
     return;
   }
   // 기존 importDataCode 로직 활용
-  fetch('https://mobinogi.elmi.page/api.php?action=shortcode&short_code=' + input)
+  fetch(getApiBase() + '?action=shortcode&short_code=' + input)
     .then(res => {
       if (!res.ok) throw new Error('not found');
       return res.json();
@@ -193,7 +196,7 @@ function renderSyncCode() {
 }
 window.renderSyncCode = renderSyncCode;
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
   // sync-id가 있을 때만 동기화 코드/설명/URL 표시
   if (window.getShortCode && window.getShortCode()) {
     renderSyncCode();
@@ -214,7 +217,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // 페이지 로드 시 동기화 코드가 있으면 URL에 항상 /숏코드 형태로 유지 (코드가 있을 때만)
-(function() {
+(function () {
   // 최초 진입 시에는 sync-id가 localStorage에 없으면 아무 동작도 하지 않음
   const code = localStorage.getItem('mobinogi-sync-id');
   const short = code ? code.slice(0, 8) : '';
@@ -232,7 +235,7 @@ function toggleDarkMode() {
 
 // 페이지 로드 시 다크 모드 상태 복원
 if (localStorage.getItem('mobinogi-dark-mode') === '1') {
-  document.addEventListener('DOMContentLoaded', function() {
+  document.addEventListener('DOMContentLoaded', function () {
     document.body.classList.add('dark-mode');
   });
 }
