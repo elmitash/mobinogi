@@ -26,7 +26,7 @@ const WEEKLY_TASKS = [
 // API 서버 주소: 도메인에 따라 자동 선택
 let API_BASE;
 if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-  API_BASE = 'http://localhost/api.php';
+  API_BASE = location.origin + '/api.php';
 } else {
   API_BASE = 'https://mobinogi.elmi.page/api.php';
 }
@@ -37,6 +37,8 @@ let userWeeklyTasks = [];
 let lastReset = { daily: null, weekly: null };
 let removedDailyTaskIds = [];
 let removedWeeklyTaskIds = [];
+let dailyTasksOrder = [];
+let weeklyTasksOrder = [];
 let showDeleteButtons = [];
 
 // 현재 세션에서 사용할 동기화 코드(숏코드) 변수
@@ -69,12 +71,15 @@ async function loadData() {
       removedWeeklyTaskIds = [];
       lastReset = { daily: null, weekly: null };
     } else {
-      characters = parsed.characters || [];
-      userDailyTasks = parsed.userDailyTasks || [];
-      userWeeklyTasks = parsed.userWeeklyTasks || [];
-      removedDailyTaskIds = parsed.removedDailyTaskIds || [];
-      removedWeeklyTaskIds = parsed.removedWeeklyTaskIds || [];
-      lastReset = parsed.lastReset || { daily: null, weekly: null };
+      const migrated = migrateUserData(parsed);
+      characters = migrated.characters || [];
+      userDailyTasks = migrated.userDailyTasks || [];
+      userWeeklyTasks = migrated.userWeeklyTasks || [];
+      removedDailyTaskIds = migrated.removedDailyTaskIds || [];
+      removedWeeklyTaskIds = migrated.removedWeeklyTaskIds || [];
+      lastReset = migrated.lastReset || { daily: null, weekly: null };
+      dailyTasksOrder = migrated.dailyTasksOrder || [];
+      weeklyTasksOrder = migrated.weeklyTasksOrder || [];
     }
   } catch (e) {
     // 서버에 데이터가 없으면 초기화
@@ -84,6 +89,8 @@ async function loadData() {
     removedDailyTaskIds = [];
     removedWeeklyTaskIds = [];
     lastReset = { daily: null, weekly: null };
+    dailyTasksOrder = [];
+    weeklyTasksOrder = [];
   }
   autoResetTasks();
 }
@@ -99,7 +106,16 @@ async function saveData() {
   }
   const syncId = CURRENT_SYNC_CODE;
   const shortCode = CURRENT_SYNC_CODE;
-  const data = { characters, userDailyTasks, userWeeklyTasks, removedDailyTaskIds, removedWeeklyTaskIds, lastReset };
+  const data = {
+    characters,
+    userDailyTasks,
+    userWeeklyTasks,
+    removedDailyTaskIds,
+    removedWeeklyTaskIds,
+    lastReset,
+    dailyTasksOrder,
+    weeklyTasksOrder
+  };
   try {
     await fetch(`${API_BASE}?action=data`, {
       method: 'POST',
@@ -199,7 +215,13 @@ function autoResetTasks() {
         }
       });
       // 사용자 추가 일일 퀘스트
-      userDailyTasks.forEach((_, tIdx) => { delete char.tasks[`user-daily-${tIdx}`]; });
+      userDailyTasks.forEach(task => {
+        if (task.type === 'select-count') {
+          char.tasks[task.id] = task.max;
+        } else {
+          delete char.tasks[task.id];
+        }
+      });
     });
     // 마지막 초기화 시간을 '가장 최근의 초기화 시점' 타임스탬프로 업데이트
     lastReset.daily = new Date(resetStatus.latestDailyResetTimestamp).toISOString();
@@ -213,8 +235,8 @@ function autoResetTasks() {
       WEEKLY_TASKS.forEach(task => { delete char.tasks[task.id]; });
       // 필드보스 체크 초기화
       FIELD_BOSSES.forEach(boss => { delete char.tasks[boss.id]; });
-      // [추가] 유저가 추가한 주간 퀘스트도 모두 초기화
-      userWeeklyTasks.forEach((_, tIdx) => { delete char.tasks[`user-weekly-${tIdx}`]; });
+      // [추가] 유저가 추가한 주간 퀘스트도 모두 초기화 (ID 기반)
+      userWeeklyTasks.forEach(task => { delete char.tasks[task.id]; });
     });
     lastReset.weekly = new Date(resetStatus.latestWeeklyResetTimestamp).toISOString();
     dataChanged = true;
@@ -225,6 +247,89 @@ function autoResetTasks() {
   }
 }
 
+/**
+ * 인덱스 기반의 구형 데이터를 고유 ID 기반의 신규 구조로 마이그레이션합니다.
+ */
+function migrateUserData(parsed) {
+  if (!parsed.userDailyTasks && !parsed.userWeeklyTasks) {
+    // 순서 배열이 없으면 초기화
+    if (!parsed.dailyTasksOrder) {
+      parsed.dailyTasksOrder = DAILY_TASKS.map(t => t.id);
+    }
+    if (!parsed.weeklyTasksOrder) {
+      parsed.weeklyTasksOrder = WEEKLY_TASKS.map(t => t.id);
+    }
+    return parsed;
+  }
+
+  let dailyMapping = {}; // { 'user-daily-0': 'ud-12345678' }
+  let weeklyMapping = {};
+
+  // 1. 일일 퀘스트 마이그레이션
+  if (parsed.userDailyTasks) {
+    parsed.userDailyTasks = parsed.userDailyTasks.map((task, idx) => {
+      const oldKey = `user-daily-${idx}`;
+      if (typeof task === 'string') {
+        const newID = `ud-legacy-${idx}`; // 고정된 ID 생성으로 기기 간 일치 보장
+        dailyMapping[oldKey] = newID;
+        return { id: newID, name: task, type: 'check', max: 1 };
+      }
+      if (!task.id) {
+        task.id = `ud-legacy-${idx}`;
+        dailyMapping[oldKey] = task.id;
+      }
+      return task;
+    });
+  }
+
+  // 2. 주간 퀘스트 마이그레이션
+  if (parsed.userWeeklyTasks) {
+    parsed.userWeeklyTasks = parsed.userWeeklyTasks.map((task, idx) => {
+      const oldKey = `user-weekly-${idx}`;
+      if (typeof task === 'string') {
+        const newID = `uw-legacy-${idx}`; // 고정된 ID 생성
+        weeklyMapping[oldKey] = newID;
+        return { id: newID, name: task, type: 'check', max: 1 };
+      }
+      if (!task.id) {
+        task.id = `uw-legacy-${idx}`;
+        weeklyMapping[oldKey] = task.id;
+      }
+      return task;
+    });
+  }
+
+  // 3. 캐릭터별 진행 상태(tasks) 키값 변경
+  if (parsed.characters && (Object.keys(dailyMapping).length > 0 || Object.keys(weeklyMapping).length > 0)) {
+    parsed.characters.forEach(char => {
+      if (!char.tasks) return;
+      const newTasks = {};
+      for (let [key, val] of Object.entries(char.tasks)) {
+        if (dailyMapping[key]) {
+          newTasks[dailyMapping[key]] = val;
+        } else if (weeklyMapping[key]) {
+          newTasks[weeklyMapping[key]] = val;
+        } else {
+          newTasks[key] = val;
+        }
+      }
+      char.tasks = newTasks;
+    });
+  }
+
+  // 4. 순서 배열 초기화 (기존 항목 포함)
+  if (!parsed.dailyTasksOrder) {
+    const userIds = parsed.userDailyTasks ? parsed.userDailyTasks.map(t => t.id) : [];
+    parsed.dailyTasksOrder = [...DAILY_TASKS.map(t => t.id), ...userIds];
+  }
+  if (!parsed.weeklyTasksOrder) {
+    const userIds = parsed.userWeeklyTasks ? parsed.userWeeklyTasks.map(t => t.id) : [];
+    parsed.weeklyTasksOrder = [...WEEKLY_TASKS.map(t => t.id), ...userIds];
+  }
+
+  return parsed;
+}
+
 function renderCharacters() {
   const row = document.getElementById('character-row');
   row.innerHTML = '';
@@ -233,19 +338,25 @@ function renderCharacters() {
     const char = characters[i] || { name: '', tasks: {}, memo: '' };
     if (showDeleteButtons[i] === undefined) showDeleteButtons[i] = false;
     const col = document.createElement('div');
-    col.className = 'col-md-2 mb-3';
+    col.className = 'col-12 col-lg-2 mb-4 px-2'; // 모바일 1열, 데스크톱 6열
     col.innerHTML = `
-      <div class="card h-100">
-        <div class="card-body text-center bg-light dark-bg">
-          <div class="mb-2 d-flex align-items-center justify-content-center gap-2">
-            <span class="fw-bold" id="char-name-${i}">${char.name}</span>
-            <button class="btn btn-sm btn-outline-secondary" onclick="editName(${i})">수정</button>
-            <button class="btn btn-sm btn-outline-info" onclick="showMemoPopup(${i})">메모</button>
+      <div class="card h-100 shadow-sm" style="border-radius: 12px;">
+        <div class="card-body p-3">
+          <div class="mb-3 d-flex align-items-center justify-content-between">
+            <span class="fw-bold text-truncate" id="char-name-${i}" style="font-size: 1.15rem;">${char.name}</span>
+            <div class="d-flex gap-1">
+              <button class="btn btn-sm p-1 text-secondary border-0" onclick="editName(${i})" title="수정">
+                <small style="font-size: 0.85rem;">수정</small>
+              </button>
+              <button class="btn btn-sm p-1 text-info border-0" onclick="showMemoPopup(${i})" title="메모">
+                <small style="font-size: 0.85rem;">메모</small>
+              </button>
+            </div>
           </div>
           <ul class="list-group list-group-flush" id="char-task-list-${i}"></ul>
         </div>
-        <div class="card-footer bg-white dark-bg border-0 text-center" id="char-footer-${i}">
-          <button class="btn btn-sm btn-danger" onclick="showDeleteConfirm(${i})">캐릭터 삭제</button>
+        <div class="card-footer bg-transparent border-0 text-center pb-2" id="char-footer-${i}">
+          <button class="btn btn-sm text-danger border-0 p-0" onclick="showDeleteConfirm(${i})"><small style="font-size: 0.7rem;">캐릭터 삭제</small></button>
         </div>
       </div>
     `;
@@ -272,117 +383,128 @@ function renderCharacterTasks(idx) {
   const ul = document.getElementById(`char-task-list-${idx}`);
   if (!ul) return;
   ul.innerHTML = '';
-  // 일일 퀘스트 헤더 + 버튼 + 항목 삭제 버튼
+
+  // --- 일일 퀘스트 섹션 ---
   let dailyHeader = document.createElement('li');
-  dailyHeader.className = 'list-group-item bg-light dark-bg fw-bold d-flex align-items-center justify-content-between';
+  dailyHeader.className = 'list-group-item fw-bold mt-1 mb-1 px-2 border-0 d-flex align-items-center justify-content-between daily-header rounded';
+  dailyHeader.style.fontSize = '1.05rem'; dailyHeader.style.color = 'var(--text-main)';
   dailyHeader.innerHTML = `
     <span>일일 퀘스트</span>
     <span>
-      <button class="btn btn-sm btn-outline-primary ms-2" onclick="addUserDailyTask()" style="width: 30px;">+</button>
-      <button class="btn btn-sm btn-outline-danger ms-2" onclick="toggleDeleteMode(${idx})" style="width: 30px;">-</button>
+      <button class="btn btn-sm p-1 text-primary" onclick="addUserDailyTask()" title="추가">+</button>
+      <button class="btn btn-sm p-1 text-danger" onclick="toggleDeleteMode(${idx})" title="편집">-</button>
     </span>
   `;
   ul.appendChild(dailyHeader);
-  // 기본 일일 퀘스트(삭제된 id 제외)
-  DAILY_TASKS.forEach(task => {
-    if (removedDailyTaskIds.includes(task.id)) return;
+
+  // dailyTasksOrder 순서대로 렌더링
+  dailyTasksOrder.forEach(taskId => {
+    if (removedDailyTaskIds.includes(taskId)) return;
+
+    // 기본 퀘스트인지 사용자 정의 퀘스트인지 확인
+    let task = DAILY_TASKS.find(t => t.id === taskId) || userDailyTasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    const isUserTask = !DAILY_TASKS.some(t => t.id === taskId);
     let li = document.createElement('li');
     li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg';
-    let minusBtn = showDeleteButtons[idx] ? `<button class=\"btn btn-sm btn-outline-danger ms-2 py-0 px-2\" style=\"font-size:1rem;line-height:1;vertical-align:middle;\" onclick=\"removeDefaultDailyTask('${task.id}')\">-</button>` : '';
+
+    let minusBtn = '';
+    if (showDeleteButtons[idx]) {
+      if (isUserTask) {
+        minusBtn = `<button class="btn btn-sm btn-outline-danger ms-2 py-0 px-2" style="font-size:1rem;line-height:1;vertical-align:middle;" onclick="removeUserDailyTask('${taskId}')">-</button>`;
+      } else {
+        minusBtn = `<button class="btn btn-sm btn-outline-danger ms-2 py-0 px-2" style="font-size:1rem;line-height:1;vertical-align:middle;" onclick="removeDefaultDailyTask('${taskId}')">-</button>`;
+      }
+    }
+
     if (task.type === 'check' || task.type === 'servercheck') {
-      li.innerHTML = `<span>${task.name} ${minusBtn}</span><div class=\"form-switch\"><input type=\"checkbox\" class=\"form-check-input form-check-lg\" style=\"width:2.5em;height:2em;\" id=\"task-${task.id}-${idx}\" ${char.tasks[task.id] ? 'checked' : ''} onchange=\"toggleTask(${idx}, '${task.id}')\"></div>`;
-      ul.appendChild(li);
+      li.style.cursor = 'pointer';
+      // 항목 클릭 시 토글 실행 (삭제 버튼 클릭 시 제외)
+      li.onclick = function (e) {
+        if (e.target.tagName.toLowerCase() === 'button') return;
+        toggleTask(idx, taskId);
+      };
+      li.innerHTML = `<span>${task.name} ${minusBtn}</span><div class="form-switch"><input type="checkbox" class="form-check-input" style="width:2.2em;height:1.2em;pointer-events:none;" id="task-${taskId}-${idx}" ${char.tasks[taskId] ? 'checked' : ''}></div>`;
     } else if (task.type === 'select-count') {
-      // 남은 횟수로 표시, 0~max까지 버튼, 초기값은 max
-      const val = typeof char.tasks[task.id] === 'number' ? char.tasks[task.id] : task.max;
+      const val = typeof char.tasks[taskId] === 'number' ? char.tasks[taskId] : task.max;
       let btns = '';
       for (let n = task.max; n >= 0; n--) {
-        btns += `<button class=\"btn btn-sm me-1 ${val === n ? 'btn-success' : 'btn-outline-secondary'}\" onclick=\"selectCount(${idx}, '${task.id}', ${n})\">${n}</button>`;
+        btns += `<button class="btn btn-sm px-2 me-1 ${val === n ? 'btn-success' : 'btn-outline-secondary'}" style="font-size: 0.75rem;" onclick="selectCount(${idx}, '${taskId}', ${n})">${n}</button>`;
       }
-      li.innerHTML = `<span>${task.name} ${minusBtn}</span><span>${btns}</span>`;
-      ul.appendChild(li);
+      li.innerHTML = `<span class="text-truncate me-2">${task.name} ${minusBtn}</span><span style="white-space: nowrap; flex-shrink: 0;">${btns}</span>`;
     }
+    ul.appendChild(li);
   });
-  // 사용자 추가 일일 퀘스트
-  // userDailyTasks 렌더링 (객체 지원)
-  userDailyTasks.forEach((task, tIdx) => {
-    let name = typeof task === 'string' ? task : task.name;
-    let type = typeof task === 'string' ? 'check' : (task.type || 'check');
-    let max = typeof task === 'object' && task.type === 'select-count' ? (task.max || 1) : 1;
-    let li = document.createElement('li');
-    li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg';
-    let minusBtn = showDeleteButtons[idx] ? `<button class="btn btn-sm btn-outline-danger ms-2 py-0 px-2" style="font-size:1rem;line-height:1;vertical-align:middle;" onclick="removeUserDailyTask(${tIdx})">-</button>` : '';
-    if (type === 'check' || type === 'servercheck') {
-      li.innerHTML = `<span>${name} ${minusBtn}</span><div class="form-switch"><input class="form-check-input form-check-lg" type="checkbox" style="width:2.5em;height:2em;" id="user-daily-${tIdx}-${idx}" ${char.tasks[`user-daily-${tIdx}`] ? 'checked' : ''} onchange="toggleTask(${idx}, 'user-daily-${tIdx}')"></div>`;
-      ul.appendChild(li);
-    } else if (type === 'select-count') {
-      const val = typeof char.tasks[`user-daily-${tIdx}`] === 'number' ? char.tasks[`user-daily-${tIdx}`] : max;
-      let btns = '';
-      for (let n = max; n >= 0; n--) {
-        btns += `<button class=\"btn btn-sm me-1 ${val === n ? 'btn-success' : 'btn-outline-secondary'}\" onclick=\"selectCount(${idx}, 'user-daily-${tIdx}', ${n})\">${n}</button>`;
-      }
-      li.innerHTML = `<span>${name} ${minusBtn}</span><span>${btns}</span>`;
-      ul.appendChild(li);
-    }
-  });
-  // 주간 퀘스트 헤더 + 버튼 + 항목 삭제 버튼
+
+  // --- 주간 퀘스트 섹션 ---
   let weeklyHeader = document.createElement('li');
-  weeklyHeader.className = 'list-group-item bg-light dark-bg fw-bold d-flex align-items-center justify-content-between';
+  weeklyHeader.className = 'list-group-item fw-bold mt-3 mb-1 px-2 border-0 d-flex align-items-center justify-content-between weekly-header rounded';
+  weeklyHeader.style.fontSize = '1.05rem'; weeklyHeader.style.color = 'var(--text-main)';
   weeklyHeader.innerHTML = `
     <span>주간 퀘스트</span>
     <span>
-      <button class="btn btn-sm btn-outline-primary ms-2" onclick="addUserWeeklyTask()" style="width: 30px;">+</button>
-      <button class="btn btn-sm btn-outline-danger ms-2" onclick="toggleDeleteMode(${idx})" style="width: 30px;">-</button>
+      <button class="btn btn-sm p-1 text-primary" onclick="addUserWeeklyTask()" title="추가">+</button>
+      <button class="btn btn-sm p-1 text-danger" onclick="toggleDeleteMode(${idx})" title="편집">-</button>
     </span>
   `;
   ul.appendChild(weeklyHeader);
-  // 기본 주간 퀘스트(삭제된 id 제외)
-  WEEKLY_TASKS.forEach(task => {
-    if (removedWeeklyTaskIds.includes(task.id)) return;
+
+  // weeklyTasksOrder 순서대로 렌더링
+  weeklyTasksOrder.forEach(taskId => {
+    if (removedWeeklyTaskIds.includes(taskId)) return;
+
+    let task = WEEKLY_TASKS.find(t => t.id === taskId) || userWeeklyTasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    const isUserTask = !WEEKLY_TASKS.some(t => t.id === taskId);
     let li = document.createElement('li');
     li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg';
-    let minusBtn = showDeleteButtons[idx] ? `<button class="btn btn-sm btn-outline-danger ms-2 py-0 px-2" style="font-size:1rem;line-height:1;vertical-align:middle;" onclick="removeDefaultWeeklyTask('${task.id}')">-</button>` : '';
-    if (task.type === 'check') {
-      li.innerHTML = `<span>${task.name} ${minusBtn}</span><div class="form-switch"><input type="checkbox" class="form-check-input form-check-lg" style="width:2.5em;height:2em;" id="task-${task.id}-${idx}" ${char.tasks[task.id] ? 'checked' : ''} onchange="toggleTask(${idx}, '${task.id}')"></div>`;
+
+    let minusBtn = '';
+    if (showDeleteButtons[idx]) {
+      if (isUserTask) {
+        minusBtn = `<button class="btn btn-sm btn-outline-danger ms-2 py-0 px-2" style="font-size:1rem;line-height:1;vertical-align:middle;" onclick="removeUserWeeklyTask('${taskId}')">-</button>`;
+      } else {
+        minusBtn = `<button class="btn btn-sm btn-outline-danger ms-2 py-0 px-2" style="font-size:1rem;line-height:1;vertical-align:middle;" onclick="removeDefaultWeeklyTask('${taskId}')">-</button>`;
+      }
+    }
+
+    if (task.type === 'check' || task.type === 'servercheck') {
+      li.style.cursor = 'pointer';
+      // 항목 클릭 시 토글 실행 (삭제 버튼 클릭 시 제외)
+      li.onclick = function (e) {
+        if (e.target.tagName.toLowerCase() === 'button') return;
+        toggleTask(idx, taskId);
+      };
+      li.innerHTML = `<span>${task.name} ${minusBtn}</span><div class="form-switch"><input type="checkbox" class="form-check-input" style="width:2.2em;height:1.2em;pointer-events:none;" id="task-${taskId}-${idx}" ${char.tasks[taskId] ? 'checked' : ''}></div>`;
+      ul.appendChild(li);
+    } else if (task.type === 'select-count') {
+      const val = typeof char.tasks[taskId] === 'number' ? char.tasks[taskId] : task.max;
+      let btns = '';
+      for (let n = task.max; n >= 0; n--) {
+        btns += `<button class="btn btn-sm px-2 me-1 ${val === n ? 'btn-success' : 'btn-outline-secondary'}" style="font-size: 0.75rem;" onclick="selectCount(${idx}, '${taskId}', ${n})">${n}</button>`;
+      }
+      li.innerHTML = `<span class="text-truncate me-2">${task.name} ${minusBtn}</span><span style="white-space: nowrap; flex-shrink: 0;">${btns}</span>`;
       ul.appendChild(li);
     } else if (task.type === 'fieldboss-group') {
       let checkedCount = FIELD_BOSSES.reduce((sum, boss) => sum + (char.tasks[boss.id] ? 1 : 0), 0);
       let bossList = FIELD_BOSSES.map(boss => {
-        return `<div class="form-check form-switch d-flex align-items-center justify-content-between ms-3 mb-1">
-          <span>${boss.name}</span>
-          <input class="form-check-input form-check-lg" style="width:2.5em;height:2em;" type="checkbox" id="boss-${boss.id}-${idx}" ${char.tasks[boss.id] ? 'checked' : ''} onchange="toggleFieldBoss(${idx}, '${boss.id}')">
+        return `<div class="form-check form-switch d-flex align-items-center justify-content-between mb-1 boss-item" style="cursor: pointer;" onclick="toggleFieldBoss(${idx}, '${boss.id}')">
+          <span class="small">${boss.name}</span>
+          <input class="form-check-input" type="checkbox" id="boss-${boss.id}-${idx}" ${char.tasks[boss.id] ? 'checked' : ''} style="pointer-events: none;">
         </div>`;
       }).join('');
-      const highlight = checkedCount === 3 ? 'highlight-boss' : '';
+      const highlight = checkedCount === 3 ? 'text-success fw-bold' : '';
       li.innerHTML = `<div class="w-100">
-        <div class="d-flex align-items-center justify-content-between mb-1">
-          <span>주간 필드보스 (최대 3마리) ${minusBtn}</span>
-          <small class="text-muted ${highlight}">선택: ${checkedCount}/3</small>
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <span class="small">주간 필드보스 (최대 3) ${minusBtn}</span>
+          <small class="${highlight}">${checkedCount}/3</small>
         </div>
-        ${bossList}
+        <div class="ps-2 border-start ms-1" style="border-width: 2px !important;">
+          ${bossList}
+        </div>
       </div>`;
-      ul.appendChild(li);
-    }
-  });
-  // 사용자 추가 주간 퀘스트
-  // userWeeklyTasks 렌더링 (객체 지원)
-  userWeeklyTasks.forEach((task, tIdx) => {
-    let name = typeof task === 'string' ? task : task.name;
-    let type = typeof task === 'string' ? 'check' : (task.type || 'check');
-    let max = typeof task === 'object' && task.type === 'select-count' ? (task.max || 1) : 1;
-    let li = document.createElement('li');
-    li.className = 'list-group-item d-flex align-items-center justify-content-between dark-bg';
-    let minusBtn = showDeleteButtons[idx] ? `<button class=\"btn btn-sm btn-outline-danger ms-2 py-0 px-2\" style=\"font-size:1rem;line-height:1;vertical-align:middle;\" onclick=\"removeUserWeeklyTask(${tIdx})\">-</button>` : '';
-    if (type === 'check' || type === 'servercheck') {
-      li.innerHTML = `<span>${name} ${minusBtn}</span><div class="form-switch"><input class="form-check-input form-check-lg" type="checkbox" style="width:2.5em;height:2em;" id="user-weekly-${tIdx}-${idx}" ${char.tasks[`user-weekly-${tIdx}`] ? 'checked' : ''} onchange="toggleTask(${idx}, 'user-weekly-${tIdx}')"></div>`;
-      ul.appendChild(li);
-    } else if (type === 'select-count') {
-      const val = typeof char.tasks[`user-weekly-${tIdx}`] === 'number' ? char.tasks[`user-weekly-${tIdx}`] : max;
-      let btns = '';
-      for (let n = max; n >= 0; n--) {
-        btns += `<button class=\"btn btn-sm me-1 ${val === n ? 'btn-success' : 'btn-outline-secondary'}\" onclick=\"selectCount(${idx}, 'user-weekly-${tIdx}', ${n})\">${n}</button>`;
-      }
-      li.innerHTML = `<span>${name} ${minusBtn}</span><span>${btns}</span>`;
       ul.appendChild(li);
     }
   });
@@ -410,7 +532,7 @@ function showMessage(msg, timeout = 2000) {
 // 페이지 로드 시 동기화 코드 표시
 document.addEventListener('DOMContentLoaded', window.renderSyncCode);
 
-window.addCharacter = function() {
+window.addCharacter = function () {
   if (characters.length >= MAX_CHARACTERS) return;
   const name = prompt('추가할 캐릭터 이름을 입력하세요:');
   if (name) {
@@ -435,23 +557,25 @@ window.addCharacter = function() {
   }
 };
 
-window.showDeleteConfirm = function(idx) {
+window.showDeleteConfirm = function (idx) {
   const footer = document.getElementById(`char-footer-${idx}`);
   if (!footer) return;
   footer.innerHTML = `
-    <div class="mb-2 text-danger">정말 삭제할까요?</div>
-    <button class="btn btn-sm btn-danger me-2" onclick="deleteCharacter(${idx})">Yes</button>
-    <button class="btn btn-sm btn-secondary" onclick="cancelDelete(${idx})">No</button>
+    <div class="mb-2 text-danger small">정말 삭제할까요?</div>
+    <div class="d-flex justify-content-center gap-2">
+      <button class="btn btn-sm btn-danger" onclick="deleteCharacter(${idx})">삭제</button>
+      <button class="btn btn-sm btn-secondary" onclick="cancelDelete(${idx})">취소</button>
+    </div>
   `;
 };
 
-window.cancelDelete = function(idx) {
+window.cancelDelete = function (idx) {
   const footer = document.getElementById(`char-footer-${idx}`);
   if (!footer) return;
   footer.innerHTML = `<button class="btn btn-sm btn-danger" onclick="showDeleteConfirm(${idx})">캐릭터 삭제</button>`;
 };
 
-window.deleteCharacter = function(idx) {
+window.deleteCharacter = function (idx) {
   characters.splice(idx, 1);
   if (characters.length === 0) {
     // 캐릭터가 0명이 되면 서버 데이터도 삭제
@@ -483,7 +607,7 @@ window.deleteCharacter = function(idx) {
   }
 };
 
-window.editName = function(idx) {
+window.editName = function (idx) {
   const name = prompt('새 캐릭터 이름을 입력하세요:', characters[idx].name);
   if (name) {
     characters[idx].name = name;
@@ -492,23 +616,19 @@ window.editName = function(idx) {
   }
 };
 
-window.toggleTask = function(idx, taskId) {
+window.toggleTask = function (idx, taskId) {
   // 계정공유(servercheck) 타입 처리
-  // user-daily, user-weekly, 기본 daily 모두 지원
   let isServerCheck = false;
-  // 기본 일일 퀘스트
-  if (taskId === 'dailyfree') isServerCheck = true;
-  // 사용자 추가 일일/주간 퀘스트
-  if (taskId.startsWith('user-daily-')) {
-    const tIdx = parseInt(taskId.replace('user-daily-', ''), 10);
-    const task = userDailyTasks[tIdx];
-    if (task && (task.type === 'servercheck')) isServerCheck = true;
+
+  // 기본 퀘스트 확인
+  let task = DAILY_TASKS.find(t => t.id === taskId) || WEEKLY_TASKS.find(t => t.id === taskId);
+  // 사용자 추가 퀘스트 확인
+  if (!task) {
+    task = userDailyTasks.find(t => t.id === taskId) || userWeeklyTasks.find(t => t.id === taskId);
   }
-  if (taskId.startsWith('user-weekly-')) {
-    const tIdx = parseInt(taskId.replace('user-weekly-', ''), 10);
-    const task = userWeeklyTasks[tIdx];
-    if (task && (task.type === 'servercheck')) isServerCheck = true;
-  }
+
+  if (task && task.type === 'servercheck') isServerCheck = true;
+
   if (isServerCheck) {
     // 첫 캐릭터의 상태를 기준으로 반전
     const newVal = !characters[0]?.tasks[taskId];
@@ -524,9 +644,10 @@ window.toggleTask = function(idx, taskId) {
   if (!characters[idx]) characters[idx] = { name: '', tasks: {} };
   characters[idx].tasks[taskId] = !characters[idx].tasks[taskId];
   saveData();
+  renderCharacterTasks(idx);
 };
 
-window.toggleFieldBoss = function(idx, bossId) {
+window.toggleFieldBoss = function (idx, bossId) {
   if (!characters[idx]) characters[idx] = { name: '', tasks: {} };
   const char = characters[idx];
   const checkedCount = FIELD_BOSSES.reduce((sum, boss) => sum + (char.tasks[boss.id] ? 1 : 0), 0);
@@ -545,7 +666,7 @@ window.toggleFieldBoss = function(idx, bossId) {
   renderCharacterTasks(idx);
 };
 
-window.changeCount = function(idx, taskId, delta) {
+window.changeCount = function (idx, taskId, delta) {
   if (!characters[idx]) characters[idx] = { name: '', tasks: {} };
   let val = characters[idx].tasks[taskId] || 0;
   const task = TASKS.find(t => t.id === taskId);
@@ -557,7 +678,7 @@ window.changeCount = function(idx, taskId, delta) {
   document.getElementById(`count-${taskId}-${idx}`).innerText = val;
 };
 
-window.selectCount = function(idx, taskId, count) {
+window.selectCount = function (idx, taskId, count) {
   if (!characters[idx]) characters[idx] = { name: '', tasks: {} };
   characters[idx].tasks[taskId] = count;
   saveData();
@@ -594,7 +715,7 @@ document.getElementById('quest-popup-type').addEventListener('change', onQuestTy
 document.getElementById('quest-popup-cancel').addEventListener('click', hideQuestPopup);
 document.getElementById('quest-popup-bg').addEventListener('click', hideQuestPopup);
 
-document.getElementById('quest-popup-add').addEventListener('click', function() {
+document.getElementById('quest-popup-add').addEventListener('click', function () {
   const name = document.getElementById('quest-popup-name').value.trim();
   const type = document.getElementById('quest-popup-type').value;
   let max = 1;
@@ -609,24 +730,26 @@ document.getElementById('quest-popup-add').addEventListener('click', function() 
     showMessage('퀘스트 이름을 입력하세요.');
     return;
   }
-  let tIdx;
+
+  const newID = (questPopupMode === 'daily' ? 'ud-' : 'uw-') + Date.now();
+  const newTask = { id: newID, name, type, max };
+
   if (questPopupMode === 'daily') {
-    userDailyTasks.push({ name, type, max });
-    tIdx = userDailyTasks.length - 1;
-    // servercheck 타입이면 모든 캐릭터의 tasks에서 해당 키를 삭제(체크 안된 상태로 추가)
+    userDailyTasks.push(newTask);
+    dailyTasksOrder.push(newID);
     if (type === 'servercheck') {
       characters.forEach(char => {
         if (!char.tasks) return;
-        delete char.tasks[`user-daily-${tIdx}`];
+        delete char.tasks[newID];
       });
     }
   } else {
-    userWeeklyTasks.push({ name, type, max });
-    tIdx = userWeeklyTasks.length - 1;
+    userWeeklyTasks.push(newTask);
+    weeklyTasksOrder.push(newID);
     if (type === 'servercheck') {
       characters.forEach(char => {
         if (!char.tasks) return;
-        delete char.tasks[`user-weekly-${tIdx}`];
+        delete char.tasks[newID];
       });
     }
   }
@@ -636,14 +759,14 @@ document.getElementById('quest-popup-add').addEventListener('click', function() 
 });
 
 // 기존 prompt 방식 제거, 버튼에서 팝업 호출로 변경
-window.addUserDailyTask = function() {
+window.addUserDailyTask = function () {
   showQuestPopup('daily');
 };
-window.addUserWeeklyTask = function() {
+window.addUserWeeklyTask = function () {
   showQuestPopup('weekly');
 };
 
-window.removeDefaultDailyTask = function(taskId) {
+window.removeDefaultDailyTask = function (taskId) {
   if (!removedDailyTaskIds.includes(taskId)) removedDailyTaskIds.push(taskId);
   characters.forEach(char => {
     if (!char.tasks) return;
@@ -653,7 +776,7 @@ window.removeDefaultDailyTask = function(taskId) {
   renderCharacters();
 };
 
-window.removeDefaultWeeklyTask = function(taskId) {
+window.removeDefaultWeeklyTask = function (taskId) {
   if (!removedWeeklyTaskIds.includes(taskId)) removedWeeklyTaskIds.push(taskId);
   characters.forEach(char => {
     if (!char.tasks) return;
@@ -663,24 +786,34 @@ window.removeDefaultWeeklyTask = function(taskId) {
   renderCharacters();
 };
 
-window.removeUserDailyTask = function(tIdx) {
-  userDailyTasks.splice(tIdx, 1);
+window.removeUserDailyTask = function (taskId) {
+  userDailyTasks = userDailyTasks.filter(t => t.id !== taskId);
+  dailyTasksOrder = dailyTasksOrder.filter(id => id !== taskId);
+  characters.forEach(char => {
+    if (!char.tasks) return;
+    delete char.tasks[taskId];
+  });
   saveData();
   renderCharacters();
 };
 
-window.removeUserWeeklyTask = function(tIdx) {
-  userWeeklyTasks.splice(tIdx, 1);
+window.removeUserWeeklyTask = function (taskId) {
+  userWeeklyTasks = userWeeklyTasks.filter(t => t.id !== taskId);
+  weeklyTasksOrder = weeklyTasksOrder.filter(id => id !== taskId);
+  characters.forEach(char => {
+    if (!char.tasks) return;
+    delete char.tasks[taskId];
+  });
   saveData();
   renderCharacters();
 };
 
-window.toggleDeleteMode = function(idx) {
+window.toggleDeleteMode = function (idx) {
   showDeleteButtons[idx] = !showDeleteButtons[idx];
   renderCharacterTasks(idx);
 };
 
-window.resetAllData = function() {
+window.resetAllData = function () {
   if (!confirm('정말 모든 데이터를 초기화할까요?\n(동기화 서버의 데이터도 삭제됩니다)')) return;
   const syncId = CURRENT_SYNC_CODE;
   if (!syncId) return;
@@ -707,15 +840,29 @@ window.resetAllData = function() {
     });
 };
 
-window.resetQuestItems = function() {
+window.resetQuestItems = function () {
   if (!confirm('변경했던 퀘스트 항목만 초기화할까요? 캐릭터/진행상황은 유지됩니다.')) return;
   removedDailyTaskIds = [];
   removedWeeklyTaskIds = [];
   userDailyTasks = [];
   userWeeklyTasks = [];
+  dailyTasksOrder = DAILY_TASKS.map(t => t.id);
+  weeklyTasksOrder = WEEKLY_TASKS.map(t => t.id);
   saveData();
   renderCharacters();
   showMessage('퀘스트 항목이 초기화되었습니다.', 'success');
+};
+
+window.toggleDataManagement = function () {
+  const area = document.getElementById('data-management-area');
+  const btnArea = document.getElementById('data-management-btn-area');
+  if (area.style.display === 'none') {
+    area.style.display = 'block';
+    btnArea.style.display = 'none';
+  } else {
+    area.style.display = 'none';
+    btnArea.style.display = 'block';
+  }
 };
 
 // 페이지 로드 시 데이터 불러오기
@@ -744,10 +891,13 @@ function showMemoPopup(idx) {
     popup.id = 'memo-popup';
     popup.className = 'memo-popup';
     popup.innerHTML = `
-      <div id="memo-popup-title" class="memo-popup-title">${charName}에 관한 메모</div>
-      <textarea id="memo-textarea" class="memo-textarea">${memoPopupInitialValue}</textarea>
-      <div class="d-flex justify-content-end mt-3">
-        <button class="btn btn-primary" id="memo-save-btn">저장</button>
+      <div id="memo-popup-title" class="memo-popup-title" style="cursor: move; padding-bottom: 10px; border-bottom: 1px solid var(--border-color);">${charName} 메모</div>
+      <div class="mt-3">
+        <textarea id="memo-textarea" class="memo-textarea" style="width: 100%; height: 250px; font-size: 1rem; border: 1px solid var(--border-color);"></textarea>
+      </div>
+      <div class="d-flex justify-content-center gap-2 mt-4">
+        <button class="btn btn-primary px-5" id="memo-save-btn">저장</button>
+        <button class="btn btn-secondary px-4" id="memo-cancel-btn">취소</button>
       </div>
     `;
     document.body.appendChild(popup);
@@ -761,7 +911,7 @@ function showMemoPopup(idx) {
   document.getElementById('memo-textarea').className = 'memo-textarea';
   document.getElementById('memo-textarea').value = memoPopupInitialValue;
   document.querySelector('#memo-popup-title').textContent = `${charName}에 관한 메모`;
-  
+
   // jQuery UI 드래그 기능 재설정 (기존 이벤트 제거 후 새로 추가)
   if (window.jQuery && window.jQuery.fn.draggable) {
     const $popup = window.jQuery('#memo-popup');
@@ -770,17 +920,17 @@ function showMemoPopup(idx) {
       $popup.draggable('destroy');
     }
     // 새로 draggable 적용
-    $popup.draggable({ 
+    $popup.draggable({
       handle: '#memo-popup-title',
       containment: 'window', // 팝업이 화면 바깥으로 나가지 않도록 제한
-      start: function(event, ui) {
+      start: function (event, ui) {
         // 드래그 시작 시 transform을 제거하고 절대 위치 계산
         const $this = window.jQuery(this);
-        
+
         // 현재 transform이 적용된 상태에서의 실제 위치 계산
         // getBoundingClientRect는 transform 적용 후 위치를 반환
         const rect = this.getBoundingClientRect();
-        
+
         // transform을 제거하고 left, top을 설정
         // 50%, 50% 위치에서 translate(-50%, -50%)가 적용된 상태이므로
         // 실제 위치는 rect.left, rect.top이 맞음
@@ -792,7 +942,15 @@ function showMemoPopup(idx) {
       }
     });
   }
-  document.getElementById('memo-save-btn').onclick = saveMemoAndClose;
+  const saveBtn = document.getElementById('memo-save-btn');
+  saveBtn.onclick = saveMemoAndClose;
+
+  const cancelBtn = document.getElementById('memo-cancel-btn');
+  cancelBtn.onclick = function () {
+    memoPopupIdx = null;
+    document.getElementById('memo-popup').style.display = 'none';
+    document.getElementById('memo-popup-bg').style.display = 'none';
+  };
   bg.onclick = saveMemoAndClose;
 }
 window.showMemoPopup = showMemoPopup;
@@ -812,3 +970,88 @@ function saveMemoAndClose() {
   if (popup) popup.style.display = 'none';
   if (bg) bg.style.display = 'none';
 }
+
+// --- 순서 편집 기능 ---
+window.showOrderEditPopup = function () {
+  const bg = document.getElementById('order-popup-bg');
+  const popup = document.getElementById('order-popup');
+  const dailyUl = document.getElementById('sortable-daily');
+  const weeklyUl = document.getElementById('sortable-weekly');
+
+  dailyUl.innerHTML = '';
+  weeklyUl.innerHTML = '';
+
+  // 일일 퀘스트 목록 생성 (기본 + 사용자 정의)
+  dailyTasksOrder.forEach(id => {
+    if (removedDailyTaskIds.includes(id)) return;
+    const task = DAILY_TASKS.find(t => t.id === id) || userDailyTasks.find(t => t.id === id);
+    if (!task) return;
+    const li = document.createElement('li');
+    li.className = 'list-group-item d-flex align-items-center gap-2 mb-1 border rounded cursor-move dark-bg';
+    li.style.cursor = 'move';
+    li.dataset.id = id;
+    li.innerHTML = `<span class="ui-icon ui-icon-arrowthick-2-n-s"></span> ${task.name}`;
+    dailyUl.appendChild(li);
+  });
+
+  // 주간 퀘스트 목록 생성 (기본 + 사용자 정의)
+  weeklyTasksOrder.forEach(id => {
+    if (removedWeeklyTaskIds.includes(id)) return;
+    const task = WEEKLY_TASKS.find(t => t.id === id) || userWeeklyTasks.find(t => t.id === id);
+    if (!task) return;
+    const li = document.createElement('li');
+    li.className = 'list-group-item d-flex align-items-center gap-2 mb-1 border rounded cursor-move dark-bg';
+    li.style.cursor = 'move';
+    li.dataset.id = id;
+    li.innerHTML = `<span class="ui-icon ui-icon-arrowthick-2-n-s"></span> ${task.name}`;
+    weeklyUl.appendChild(li);
+  });
+
+  bg.style.display = 'block';
+  popup.style.display = 'block';
+
+  // jQuery UI Sortable 초기화
+  if (window.jQuery && window.jQuery.fn.sortable) {
+    window.jQuery("#sortable-daily, #sortable-weekly").sortable({
+      placeholder: "ui-state-highlight",
+      forcePlaceholderSize: true,
+      delay: 0,
+      distance: 0,
+      opacity: 0.8,
+      axis: "y" // 세로 방향으로만 드래그 제한 (선택 사항)
+    }).disableSelection();
+  }
+};
+
+window.hideOrderEditPopup = function () {
+  document.getElementById('order-popup-bg').style.display = 'none';
+  document.getElementById('order-popup').style.display = 'none';
+};
+
+window.saveOrder = function () {
+  const dailyIds = [];
+  document.querySelectorAll('#sortable-daily li').forEach(li => {
+    dailyIds.push(li.dataset.id);
+  });
+  // 숨겨진(삭제된) 일일 항목들 뒤에 보존
+  removedDailyTaskIds.forEach(id => {
+    if (!dailyIds.includes(id)) dailyIds.push(id);
+  });
+
+  const weeklyIds = [];
+  document.querySelectorAll('#sortable-weekly li').forEach(li => {
+    weeklyIds.push(li.dataset.id);
+  });
+  // 숨겨진(삭제된) 주간 항목들 뒤에 보존
+  removedWeeklyTaskIds.forEach(id => {
+    if (!weeklyIds.includes(id)) weeklyIds.push(id);
+  });
+
+  if (dailyIds.length > 0) dailyTasksOrder = dailyIds;
+  if (weeklyIds.length > 0) weeklyTasksOrder = weeklyIds;
+
+  saveData();
+  renderCharacters();
+  hideOrderEditPopup();
+  showMessage('순서가 저장되었습니다.', 'success');
+};

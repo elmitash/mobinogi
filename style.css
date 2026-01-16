@@ -1,40 +1,102 @@
-/* 메모 팝업 및 배경, textarea, 드래그 스타일 등 모든 팝업 관련 스타일 */
-.memo-popup {
-  position: fixed;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 400px;
-  max-width: 90vw;
-  min-height: 300px;
-  max-height: 80vh;
-  z-index: 1001;
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.2);
-  padding: 24px 20px 20px 20px;
-  display: none;
-  overflow: visible;
+/* Mabinogi Quest Tracker - Modern Design System */
+
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
+
+:root {
+  /* Brand Colors - Fresh Emerald & Sky Blue */
+  --primary: #10b981;
+  --primary-hover: #059669;
+  --secondary: #64748b;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --info: #0ea5e9;
+
+  /* Neutral Colors */
+  --bg-main: #f8fafc;
+  --bg-card: #ffffff;
+  --text-main: #1e293b;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* Transitions */
+  --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* 팝업 내부 모든 요소들의 z-index 보장 */
-.memo-popup * {
-  position: relative;
-  z-index: 1002;
+body {
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  line-height: 1.6;
 }
 
-.memo-popup-title {
-  font-weight: bold;
-  font-size: 1.2rem;
-  margin-bottom: 8px;
-  cursor: move;
-  user-select: none;
-  background: #fff;
+/* Card Styling */
+.card {
+  border: none;
+  border-radius: 16px;
+  background-color: var(--bg-card);
+  box-shadow: var(--shadow);
+  transition: var(--transition);
+  overflow: hidden;
 }
 
-body.dark-mode .memo-popup-title {
-  color: #e0e0e0; /* 다크모드에서 팝업 타이틀 색상 */
-  background-color: #222; /* 다크모드에서 팝업 배경색 */
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+}
+
+.card-body {
+  padding: 1rem 0.75rem;
+}
+
+/* Button Styling */
+.btn {
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  border-radius: 10px;
+  transition: var(--transition);
+}
+
+.btn-primary {
+  background-color: var(--primary);
+  border: none;
+}
+
+.btn-primary:hover {
+  background-color: var(--primary-hover);
+  transform: scale(1.02);
+}
+
+.btn-danger {
+  background-color: var(--danger);
+  border: none;
+}
+
+.btn-secondary {
+  background-color: var(--secondary);
+  border: none;
+}
+
+.btn-warning {
+  background-color: var(--warning);
+  border: none;
+  color: white !important;
+}
+
+.btn-warning:hover {
+  filter: brightness(1.1);
+  transform: scale(1.02);
+}
+
+.btn-info {
+  background-color: var(--info);
+  color: white !important;
+  border: none;
 }
 
 .memo-popup-bg {
@@ -43,40 +105,166 @@ body.dark-mode .memo-popup-title {
   top: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(0,0,0,0.4);
-  z-index: 1000;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 10000;
   display: none;
   transition: background 0.2s;
 }
 
-.memo-textarea {
+/* Task List Styling */
+.list-group-item {
+  border: none;
+  padding: 0.4rem 0.5rem;
+  background-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 10px;
+  margin-bottom: 4px;
+  transition: var(--transition);
+}
+
+.list-group-item:hover {
+  background-color: #f1f5f9;
+}
+
+.daily-header {
+  background-color: #ecfdf5 !important;
+  color: #065f46 !important;
+}
+
+.weekly-header {
+  background-color: #f0f9ff !important;
+  color: #075985 !important;
+}
+
+/* Header should not have hover effect */
+.daily-header:hover,
+.weekly-header:hover {
+  background-color: inherit !important;
+}
+
+.fw-bold {
+  color: var(--text-main);
+  font-weight: 700 !important;
+}
+
+/* Popups & Modals */
+#quest-popup,
+#order-popup {
+  background: var(--bg-card);
+  border-radius: 20px;
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  border: none;
+}
+
+.memo-popup {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 500px;
+  max-width: 95vw;
+  z-index: 10001;
+  background: var(--bg-card);
+  border-radius: 20px;
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  padding: 24px;
+  display: none;
+  overflow: visible;
+}
+
+.memo-popup-title,
+#quest-popup-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 1.25rem;
+}
+
+.memo-textarea,
+.form-control,
+.form-select {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 0.625rem;
+  transition: var(--transition);
   width: 100%;
-  min-height: 200px;
-  max-height: 400px;
-  resize: vertical;
-  font-size: 1rem;
-  padding: 8px;
-  border-radius: 8px;
-  border: 1px solid #444;
-  background: #fff;
-  color: #222;
   box-sizing: border-box;
 }
 
-/* 드래그 가능한 퀘스트 항목 기본 테두리: 은은한 실선 */
-.user-daily-item, .user-weekly-item {
-  border: 1.5px solid #b6e2c6 !important;
-  cursor: move !important;
-  box-shadow: 0 2px 8px rgba(25,135,84,0.06);
-  transition: box-shadow 0.2s, border-color 0.2s;
+.memo-textarea:focus,
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+  outline: none;
 }
-/* 드래그 중에만 점선 강조 */
-.user-daily-item.ui-sortable-helper, .user-weekly-item.ui-sortable-helper {
-  border: 2.5px dashed #198754 !important;
-  box-shadow: 0 4px 16px rgba(25,135,84,0.18);
-  background: #f6fff8;
+
+/* Custom Checkbox/Switch */
+.form-check-input {
+  cursor: pointer;
 }
-.user-daily-list .user-daily-item, .user-weekly-list .user-weekly-item {
+
+.form-check-input:checked {
+  background-color: var(--primary);
+  border-color: var(--primary);
+}
+
+/* Sync Code Area */
+#sync-code-area span {
+  background-color: #fef3c7 !important;
+  color: #92400e !important;
+  border: 1px solid #fde68a !important;
+  font-family: inherit;
+}
+
+/* Data Management Area */
+#data-management-area {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+}
+
+/* Utility */
+.cursor-move {
+  cursor: move;
+}
+
+.ui-state-highlight {
+  height: 48px;
+  background: #f1f5f9;
+  border: 2px dashed var(--primary);
+  border-radius: 12px;
+  opacity: 0.5;
+}
+
+.boss-item {
+  padding: 0.3rem 0.5rem;
   border-radius: 8px;
-  margin-bottom: 6px;
+  transition: var(--transition);
+}
+
+.boss-item:hover {
+  background-color: #f1f5f9;
+}
+
+/* Sortable performance fix: Disable transitions while dragging */
+.ui-sortable-handle {
+  touch-action: none;
+}
+
+.ui-sortable-helper {
+  transition: none !important;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1) !important;
+}
+
+/* Disable transitions for all items when sorting is active on the parent */
+.ui-sortable .list-group-item {
+  transition: none !important;
+}
+
+/* Fallback for items that need transitions usually */
+.list-group-item {
+  transition: background-color 0.2s, transform 0.2s;
 }

@@ -4,7 +4,7 @@ let CURRENT_SYNC_CODE = localStorage.getItem('mobinogi-sync-id') || '';
 // API 주소 반환 함수
 function getApiBase() {
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-    return 'http://localhost/api.php';
+    return location.origin + '/api.php';
   }
   return 'https://mobinogi.elmi.page/api.php';
 }
@@ -118,7 +118,7 @@ function showSyncInputBox() {
     document.getElementById('sync-code-area').after(area);
   }
   area.innerHTML = `
-    <div style="background:#fff;border-radius:1em;box-shadow:0 2px 16px rgba(0,0,0,0.10);padding:1.5em 1.2em;max-width:340px;width:100%;margin:0 auto;display:flex;flex-direction:column;align-items:center;">
+    <div class="sync-input-container" style="border-radius:1em;box-shadow:0 2px 16px rgba(0,0,0,0.10);padding:1.5em 1.2em;max-width:340px;width:100%;margin:0 auto;display:flex;flex-direction:column;align-items:center;">
       <label for='sync-input' style='font-weight:bold;font-size:1.1em;margin-bottom:0.7em;'>동기화 코드(숏코드) 입력</label>
       <input id='sync-input' type='text' maxlength='8' class='form-control text-center mb-2' style='font-size:1.5em;max-width:180px;letter-spacing:0.2em;' placeholder='8자리 코드'>
       <button class='btn btn-success w-100' onclick='submitSyncInput()'>동기화</button>
@@ -147,8 +147,10 @@ function submitSyncInput() {
     .then(result => {
       localStorage.setItem('mobinogi-sync-id', result.sync_id);
       CURRENT_SYNC_CODE = result.sync_id;
-      showMessage('동기화가 완료되었습니다! 페이지를 새로고침합니다.', 'success');
-      setTimeout(() => location.reload(), 1200);
+      showMessage('동기화가 완료되었습니다! 잠시 후 데이터가 갱신됩니다.', 'success');
+      setTimeout(() => {
+        location.href = '/' + result.sync_id;
+      }, 1000);
     })
     .catch(() => {
       showMessage('해당 동기화 코드를 찾을 수 없습니다.', 'error');
