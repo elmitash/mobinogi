@@ -31,18 +31,29 @@ if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
   API_BASE = 'https://mobinogi.elmi.page/api.php';
 }
 
-let characters = [];
-let userDailyTasks = [];
-let userWeeklyTasks = [];
-let lastReset = { daily: null, weekly: null };
-let removedDailyTaskIds = [];
-let removedWeeklyTaskIds = [];
-let dailyTasksOrder = [];
-let weeklyTasksOrder = [];
-let showDeleteButtons = [];
+const characters = [];
+const userDailyTasks = [];
+const userWeeklyTasks = [];
+const lastReset = { daily: null, weekly: null };
+const removedDailyTaskIds = [];
+const removedWeeklyTaskIds = [];
+const dailyTasksOrder = [];
+const weeklyTasksOrder = [];
+const showDeleteButtons = [];
 
 // 현재 세션에서 사용할 동기화 코드(숏코드) 변수
 let CURRENT_SYNC_CODE = window.getShortCode ? window.getShortCode() : '';
+
+// --- 테스트용 시간 시뮬레이션 기능 ---
+// 콘솔에서 window.SIMULATED_TIME = "2026-01-20T07:00:00" 형태로 설정 가능
+window.SIMULATED_TIME = null;
+function getNow() {
+  if (window.SIMULATED_TIME) {
+    const sim = new Date(window.SIMULATED_TIME).getTime();
+    if (!isNaN(sim)) return sim;
+  }
+  return Date.now();
+}
 
 // API로 데이터 불러오기
 async function loadData() {
@@ -54,7 +65,12 @@ async function loadData() {
     userWeeklyTasks = [];
     removedDailyTaskIds = [];
     removedWeeklyTaskIds = [];
-    lastReset = { daily: null, weekly: null };
+    // 신규 유저의 경우, 현재 시점의 초기화 타임스탬프를 미리 설정하여 불필요한 즉시 초기화 방지
+    const currentStatus = checkQuestResetTimestamps(null, null);
+    lastReset = {
+      daily: new Date(currentStatus.latestDailyResetTimestamp).toISOString(),
+      weekly: new Date(currentStatus.latestWeeklyResetTimestamp).toISOString()
+    };
     autoResetTasks();
     return;
   }
@@ -63,34 +79,48 @@ async function loadData() {
     if (!res.ok) throw new Error('데이터 없음');
     const result = await res.json();
     const parsed = result.data;
+
+    // 기존 배열/객체의 내용을 비우고 새로운 데이터로 채움 (참조 유지)
+    characters.length = 0;
+    userDailyTasks.length = 0;
+    userWeeklyTasks.length = 0;
+    removedDailyTaskIds.length = 0;
+    removedWeeklyTaskIds.length = 0;
+    dailyTasksOrder.length = 0;
+    weeklyTasksOrder.length = 0;
+
     if (Array.isArray(parsed)) {
-      characters = parsed;
-      userDailyTasks = [];
-      userWeeklyTasks = [];
-      removedDailyTaskIds = [];
-      removedWeeklyTaskIds = [];
-      lastReset = { daily: null, weekly: null };
+      characters.push(...parsed);
+      lastReset.daily = null;
+      lastReset.weekly = null;
     } else {
       const migrated = migrateUserData(parsed);
-      characters = migrated.characters || [];
-      userDailyTasks = migrated.userDailyTasks || [];
-      userWeeklyTasks = migrated.userWeeklyTasks || [];
-      removedDailyTaskIds = migrated.removedDailyTaskIds || [];
-      removedWeeklyTaskIds = migrated.removedWeeklyTaskIds || [];
-      lastReset = migrated.lastReset || { daily: null, weekly: null };
-      dailyTasksOrder = migrated.dailyTasksOrder || [];
-      weeklyTasksOrder = migrated.weeklyTasksOrder || [];
+      if (migrated.characters) characters.push(...migrated.characters);
+      if (migrated.userDailyTasks) userDailyTasks.push(...migrated.userDailyTasks);
+      if (migrated.userWeeklyTasks) userWeeklyTasks.push(...migrated.userWeeklyTasks);
+      if (migrated.removedDailyTaskIds) removedDailyTaskIds.push(...migrated.removedDailyTaskIds);
+      if (migrated.removedWeeklyTaskIds) removedWeeklyTaskIds.push(...migrated.removedWeeklyTaskIds);
+      if (migrated.dailyTasksOrder) dailyTasksOrder.push(...migrated.dailyTasksOrder);
+      if (migrated.weeklyTasksOrder) weeklyTasksOrder.push(...migrated.weeklyTasksOrder);
+
+      if (migrated.lastReset) {
+        lastReset.daily = migrated.lastReset.daily;
+        lastReset.weekly = migrated.lastReset.weekly;
+      }
     }
   } catch (e) {
-    // 서버에 데이터가 없으면 초기화
-    characters = [];
-    userDailyTasks = [];
-    userWeeklyTasks = [];
-    removedDailyTaskIds = [];
-    removedWeeklyTaskIds = [];
-    lastReset = { daily: null, weekly: null };
-    dailyTasksOrder = [];
-    weeklyTasksOrder = [];
+    // 서버에 데이터가 없거나 에러 발생 시 초기화
+    characters.length = 0;
+    userDailyTasks.length = 0;
+    userWeeklyTasks.length = 0;
+    removedDailyTaskIds.length = 0;
+    removedWeeklyTaskIds.length = 0;
+    dailyTasksOrder.length = 0;
+    weeklyTasksOrder.length = 0;
+
+    const currentStatus = checkQuestResetTimestamps(null, null);
+    lastReset.daily = new Date(currentStatus.latestDailyResetTimestamp).toISOString();
+    lastReset.weekly = new Date(currentStatus.latestWeeklyResetTimestamp).toISOString();
   }
   autoResetTasks();
 }
@@ -135,13 +165,12 @@ async function saveData() {
  *          dayOfWeek: 0=일요일, 1=월요일, ..., 6=토요일
  */
 function getKST_Info(dateInput) {
-  const formatter = new Intl.DateTimeFormat('en-US', { // en-US for reliable weekday format
-    timeZone: 'Asia/Seoul',
-    weekday: 'short', // 'Mon', 'Tue' 등 요일 정보
-  });
-  const weekday = formatter.format(new Date(dateInput));
-  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  return { dayOfWeek: weekdays.indexOf(weekday) };
+  const date = new Date(dateInput);
+  const timestamp = date.getTime();
+  if (isNaN(timestamp)) return { dayOfWeek: -1 };
+  // 한국 시간(KST)은 UTC+9입니다.
+  const kstDate = new Date(timestamp + (9 * 60 * 60 * 1000));
+  return { dayOfWeek: kstDate.getUTCDay() };
 }
 
 /**
@@ -157,43 +186,50 @@ function getKST_Info(dateInput) {
  * }}
  */
 function checkQuestResetTimestamps(lastResetDailyISO, lastResetWeeklyISO) {
-  const nowTimestamp = Date.now();
+  const nowTimestamp = getNow();
 
-  // --- 가장 최근의 '일일 초기화 시점 (매일 오전 6시 KST)'의 타임스탬프 계산 ---
-  // KST 오전 6시는 UTC 기준 전날 오후 9시(21:00)입니다.
-  let dailyResetPoint = new Date();
-  dailyResetPoint.setUTCHours(21, 0, 0, 0); // 오늘 날짜의 UTC 21시로 설정
+  // KST 기준으로 현재 날짜/시간 추출
+  const kstNow = new Date(nowTimestamp + (9 * 60 * 60 * 1000));
+  const kstYear = kstNow.getUTCFullYear();
+  const kstMonth = kstNow.getUTCMonth();
+  const kstDate = kstNow.getUTCDate();
 
-  // 만약 현재 시각이 '오늘의 KST 오전 6시'보다 이르다면,
-  // 가장 최근 초기화 시점은 어제 KST 오전 6시여야 합니다.
-  if (nowTimestamp < dailyResetPoint.getTime()) {
-    dailyResetPoint.setDate(dailyResetPoint.getDate() - 1);
+  // 오늘 오전 6시 KST를 UTC 타임스탬프로 계산 (Date.UTC는 이미 UTC 기준이므로 오프셋 보정 필요)
+  // Date.UTC(year, month, day, hour, ...)
+  const kstResetTodayUTC = Date.UTC(kstYear, kstMonth, kstDate, 6, 0, 0, 0);
+  let latestDailyResetTimestamp = kstResetTodayUTC - (9 * 60 * 60 * 1000);
+
+  // 현재 시각이 오늘 오전 6시 전이라면 '어제 6시'가 가장 최근의 초기화 시점
+  if (nowTimestamp < latestDailyResetTimestamp) {
+    latestDailyResetTimestamp -= (24 * 60 * 60 * 1000);
   }
-  const latestDailyResetTimestamp = dailyResetPoint.getTime();
 
-  // --- 가장 최근의 '주간 초기화 시점 (매주 월요일 오전 6시 KST)'의 타임스탬프 계산 ---
-  let weeklyResetPoint = new Date(latestDailyResetTimestamp); // 일일 초기화 시점에서 시작
-
-  // [수정] getUTCDay() 대신, 시간대에 안전한 헬퍼 함수를 사용해 정확한 KST 요일을 얻습니다.
-  const kstInfo = getKST_Info(weeklyResetPoint);
-  const dayOfWeekKST = kstInfo.dayOfWeek; // 0=일요일, 1=월요일...
-  // KST의 요일은 UTC+9 이므로, UTC 시간이 21시 이상이면 다음날 요일임
-  // 간단하게 하기 위해 dayOfWeekUTC를 그대로 사용해도 큰 문제 없음 (경계선에서 9시간 오차)
-  // 더 정확하려면 KST 요일을 계산해야하지만, 이 정도도 대부분의 경우 충분
+  // 주간 초기화 (월요일 오전 6시)
+  const kstInfo = getKST_Info(latestDailyResetTimestamp);
+  const dayOfWeekKST = kstInfo.dayOfWeek;
   const daysToSubtract = (dayOfWeekKST - 1 + 7) % 7;
-  weeklyResetPoint.setDate(weeklyResetPoint.getDate() - daysToSubtract);
-  const latestWeeklyResetTimestamp = weeklyResetPoint.getTime();
+  const latestWeeklyResetTimestamp = latestDailyResetTimestamp - (daysToSubtract * 24 * 60 * 60 * 1000);
 
-  // --- 마지막 초기화 시간과 비교 ---
+  // 로컬/저장된 시간과 비교
   const lastDailyTime = lastResetDailyISO ? new Date(lastResetDailyISO).getTime() : 0;
   const lastWeeklyTime = lastResetWeeklyISO ? new Date(lastResetWeeklyISO).getTime() : 0;
 
-  return {
-    needsDailyReset: lastDailyTime < latestDailyResetTimestamp,
-    needsWeeklyReset: lastWeeklyTime < latestWeeklyResetTimestamp,
+  const result = {
+    needsDailyReset: isNaN(lastDailyTime) || lastDailyTime < latestDailyResetTimestamp,
+    needsWeeklyReset: isNaN(lastWeeklyTime) || lastWeeklyTime < latestWeeklyResetTimestamp,
     latestDailyResetTimestamp: latestDailyResetTimestamp,
     latestWeeklyResetTimestamp: latestWeeklyResetTimestamp
   };
+
+  console.log("[QuestReset] 계산 결과:", {
+    현재시간: new Date(nowTimestamp).toLocaleString(),
+    최근일일초기화: new Date(result.latestDailyResetTimestamp).toLocaleString(),
+    최근주간초기화: new Date(result.latestWeeklyResetTimestamp).toLocaleString(),
+    일간리셋필요: result.needsDailyReset,
+    주간리셋필요: result.needsWeeklyReset
+  });
+
+  return result;
 }
 
 function autoResetTasks() {
@@ -241,11 +277,20 @@ function autoResetTasks() {
     lastReset.weekly = new Date(resetStatus.latestWeeklyResetTimestamp).toISOString();
     dataChanged = true;
   }
-  // 변경 사항이 있을 경우에만 저장
+
+  // 변경 사항이 있을 경우에만 저장 및 UI 갱신
   if (dataChanged) {
+    console.log("[QuestReset] 데이터가 변경되어 저장 및 UI를 갱신합니다.");
     saveData();
+    renderCharacters();
   }
 }
+
+// 콘솔 테스트를 위한 전역 등록
+window.checkQuestResetTimestamps = checkQuestResetTimestamps;
+window.autoResetTasks = autoResetTasks;
+// lastReset은 객체이므로 참조를 통해 콘솔에서 수정 가능합니다.
+window.lastReset = lastReset;
 
 /**
  * 인덱스 기반의 구형 데이터를 고유 ID 기반의 신규 구조로 마이그레이션합니다.
@@ -259,7 +304,24 @@ function migrateUserData(parsed) {
     if (!parsed.weeklyTasksOrder) {
       parsed.weeklyTasksOrder = WEEKLY_TASKS.map(t => t.id);
     }
+    // lastReset이 누락된 구형 데이터인 경우 현재 시점 기준으로 채워줌
+    if (!parsed.lastReset || !parsed.lastReset.daily) {
+      const currentResets = checkQuestResetTimestamps(null, null);
+      parsed.lastReset = {
+        daily: new Date(currentResets.latestDailyResetTimestamp).toISOString(),
+        weekly: new Date(currentResets.latestWeeklyResetTimestamp).toISOString()
+      };
+    }
     return parsed;
+  }
+
+  // lastReset이 없는 경우를 위한 공통 처리
+  if (!parsed.lastReset || !parsed.lastReset.daily) {
+    const currentResets = checkQuestResetTimestamps(null, null);
+    parsed.lastReset = {
+      daily: new Date(currentResets.latestDailyResetTimestamp).toISOString(),
+      weekly: new Date(currentResets.latestWeeklyResetTimestamp).toISOString()
+    };
   }
 
   let dailyMapping = {}; // { 'user-daily-0': 'ud-12345678' }
